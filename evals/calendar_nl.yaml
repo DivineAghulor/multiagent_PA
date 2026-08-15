@@ -1,0 +1,4 @@
+# Phase 1 placeholder: fixed prompts + expected outputs for the Calendar
+# sub-agent (NL event creation, priority engine, reschedule/confirmation).
+# Format TBD when Phase 1 starts.
+cases: []
