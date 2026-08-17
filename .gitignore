@@ -21,3 +21,5 @@ Thumbs.db
 
 # Local tooling config
 .claude/settings.local.json
+
+token.json
