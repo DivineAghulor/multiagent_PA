@@ -1,9 +1,10 @@
 """Typed, validated application settings, loaded from .env / the process env."""
 from __future__ import annotations
-
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+load_dotenv()
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

@@ -1,4 +1,55 @@
-# Phase 1 placeholder: fixed prompts + expected outputs for the Calendar
-# sub-agent (NL event creation, priority engine, reschedule/confirmation).
-# Format TBD when Phase 1 starts.
-cases: []
+# Fixed prompts + expected outputs for the Calendar sub-agent's NL event
+# parser (agents/calendar_nlp.py: parse_event_text). Each case checks what
+# the LLM extracts BEFORE deterministic date resolution runs, since that
+# resolution logic is already covered by unit tests in
+# tests/test_calendar_nlp.py and doesn't need an LLM call to verify.
+#
+# reference_time is the "current moment" given to the model for each case,
+# so relative phrases ("tomorrow", "next Friday") resolve deterministically
+# for grading. Run with: uv run python evals/run_calendar_nl.py
+
+cases:
+  - input: "Dinner at 5pm"
+    reference_time: "2026-08-18T09:00:00+00:00"
+    expected:
+      title_contains: "dinner"
+      start_time: "17:00"
+      explicit_date: null
+      duration_minutes: null
+      end_time: null
+
+  - input: "Team standup tomorrow at 9:30am for 15 minutes"
+    reference_time: "2026-08-18T09:00:00+00:00"
+    expected:
+      title_contains: "standup"
+      start_time: "09:30"
+      explicit_date: "2026-08-19"
+      duration_minutes: 15
+
+  - input: "Dentist appointment on March 3rd at 2pm"
+    reference_time: "2026-08-18T09:00:00+00:00"
+    expected:
+      title_contains: "dentist"
+      start_time: "14:00"
+      explicit_date: "2027-03-03"
+
+  - input: "Call with Sarah from 3pm to 3:45pm"
+    reference_time: "2026-08-18T09:00:00+00:00"
+    expected:
+      title_contains: "sarah"
+      start_time: "15:00"
+      end_time: "15:45"
+
+  - input: "Gym at 6am"
+    reference_time: "2026-08-18T09:00:00+00:00"  # 6am already passed today
+    expected:
+      title_contains: "gym"
+      start_time: "06:00"
+      explicit_date: null  # resolution logic (not the LLM) rolls this to tomorrow
+
+  - input: "Lunch with the team next Friday at noon"
+    reference_time: "2026-08-18T09:00:00+00:00"  # a Tuesday
+    expected:
+      title_contains: "lunch"
+      start_time: "12:00"
+      explicit_date: "2026-08-21"
