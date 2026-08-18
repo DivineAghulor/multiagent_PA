@@ -17,6 +17,10 @@ dependencies = [
     "langchain-openai>=0.3",
     "langchain-xai>=0.2",
     "langsmith>=0.1.140",
+    "google-api-python-client>=2.198.0",
+    "google-auth-oauthlib>=1.4.0",
+    "google-auth-httplib2>=0.4.1",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
