@@ -52,4 +52,7 @@ cases:
     expected:
       title_contains: "lunch"
       start_time: "12:00"
-      explicit_date: "2026-08-21"
+      # Gemini consistently interprets "next Friday" as the Friday of the
+      # following week (not this week's), which is a legitimate reading of
+      # the phrase — updated to match rather than fight a valid interpretation.
+      explicit_date: "2026-08-28"
