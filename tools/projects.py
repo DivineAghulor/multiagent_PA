@@ -19,15 +19,25 @@ def find_project_by_name(name: str) -> Project | None:
 
 
 def create_project(name: str, description: str | None = None, target_date: date | None = None) -> Project:
-    raise NotImplementedError
+    with get_session() as session:
+        project = Project(name=name, description=description, target_date=target_date)
+        session.add(project)
+        session.flush()
+        session.refresh(project)
+        return project
 
 
 def get_project(project_id: int) -> Project | None:
-    raise NotImplementedError
+    with get_session() as session:
+        return session.get(Project, project_id)
 
 
 def list_projects(status: ProjectStatus | None = None) -> list[Project]:
-    raise NotImplementedError
+    stmt = select(Project).order_by(Project.id)
+    if status is not None:
+        stmt = stmt.where(Project.status == status)
+    with get_session() as session:
+        return list(session.scalars(stmt).all())
 
 
 def update_project(

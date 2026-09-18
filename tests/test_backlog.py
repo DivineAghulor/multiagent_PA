@@ -68,3 +68,34 @@ def test_update_task_priority_rejects_out_of_range(db_session) -> None:
 
     with pytest.raises(ValueError):
         update_task_priority(task.id, importance=5, urgency=2)
+
+
+def test_update_task_priority_rejects_unknown_task(db_session) -> None:
+    with pytest.raises(ValueError):
+        update_task_priority(9999, importance=2, urgency=2)
+
+
+def test_add_tasks_to_backlog_tool_persists_and_summarizes(db_session) -> None:
+    from agents.pm.backlog import add_tasks_to_backlog
+
+    fake_response = ExtractedTaskBatch(
+        tasks=[
+            ExtractedTask(title="Call the dentist", description=None, project_hint=None),
+            ExtractedTask(title="Buy groceries", description=None, project_hint=None),
+        ]
+    )
+    with patch("agents.pm.backlog.extract_tasks", return_value=fake_response):
+        result = add_tasks_to_backlog.invoke({"text": "call the dentist and buy groceries"})
+
+    assert result.startswith("Added 2 task(s)")
+    assert "Call the dentist" in result and "Buy groceries" in result
+    assert get_task(1).title == "Call the dentist"
+
+
+def test_add_tasks_to_backlog_tool_reports_no_tasks(db_session) -> None:
+    from agents.pm.backlog import add_tasks_to_backlog
+
+    with patch("agents.pm.backlog.extract_tasks", return_value=ExtractedTaskBatch(tasks=[])):
+        result = add_tasks_to_backlog.invoke({"text": "not sure what to do today honestly"})
+
+    assert result.startswith("No tasks found")

@@ -200,9 +200,9 @@ Run with: `streamlit run app_test.py`
 
 ## What "done" looks like
 
-- [ ] `capture_backlog_from_text` reliably splits multi-task input into separate rows
-- [ ] Unrelated info doesn't produce phantom tasks
-- [ ] Every created task has `importance`/`urgency` as `None` until rated
-- [ ] Unit tests pass with zero API calls
-- [ ] Eval set runs against the real provider and results look sane
-- [ ] Streamlit app: sending a message adds tasks and shows a rating dialog; saving a rating removes that task from the dialog
+- [x] `capture_backlog_from_text` reliably splits multi-task input into separate rows
+- [x] Unrelated info doesn't produce phantom tasks
+- [x] Every created task has `importance`/`urgency` as `None` until rated
+- [x] Unit tests pass with zero API calls
+- [x] Eval set runs against the real provider and results look sane
+- [x] Streamlit app: sending a message adds tasks and shows a rating dialog; saving a rating removes that task from the dialog

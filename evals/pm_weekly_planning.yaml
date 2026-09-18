@@ -1,0 +1,70 @@
+# Fixed prompts + expected properties for agents.pm.planning.propose_weekly_plan.
+# Run against the real provider with: uv run python evals/run_pm_weekly_planning.py
+#
+# `fixture` is seeded into a throwaway in-memory SQLite DB (never the dev DB).
+# Each case gives either `input` (one user turn) or `turns` (several user
+# turns, each answered by the real model before the next is sent); the final
+# proposal is checked. Every case fails if sanitize_proposal had to fix
+# anything (hallucinated IDs, a task used twice). Optional expectations:
+#   min_goals / max_goals   bounds on the number of goals
+#   habit_targets           {habit name: target_count} — a goal for that habit must exist with that target
+#   linked_tasks            task titles that must be attached to some goal
+#   unlinked_tasks          task titles that must not be attached to any goal
+#   forbidden_habits        habit names no goal may target
+fixture:
+  week_start: 2026-09-21
+  projects: [Website, Thesis, Home]
+  habits:
+    - {name: Gym, frequency: weekly, target_per_period: 3}
+    - {name: Reading, frequency: daily, target_per_period: 1}
+    - {name: Meditation, frequency: daily, target_per_period: 1}
+  tasks:
+    - {title: Update pricing page copy, project: Website, importance: 3, urgency: 3}
+    - {title: Fix broken signup form, project: Website, importance: 4, urgency: 4}
+    - {title: Write launch blog post, project: Website, importance: 2, urgency: 1}
+    - {title: Write literature review chapter, project: Thesis, importance: 4, urgency: 2}
+    - {title: Email supervisor the draft outline, project: Thesis, importance: 3, urgency: 3}
+    - {title: Format bibliography, project: Thesis, importance: 1, urgency: 1}
+    - {title: Renew passport, importance: 3, urgency: 2}
+    - {title: Fix leaking kitchen tap, project: Home, importance: 2, urgency: 3}
+    - {title: Call the dentist}
+
+cases:
+  # project work + a habit with an explicit count
+  - input: "This week I want to fix the website signup and the pricing page, and get to the gym 3 times."
+    min_goals: 2
+    max_goals: 4
+    habit_targets: {Gym: 3}
+    linked_tasks: [Fix broken signup form, Update pricing page copy]
+    unlinked_tasks: [Write literature review chapter, Format bibliography]
+
+  # hard focus: nothing outside the thesis
+  - input: "Only the thesis matters this week. Nothing else, not even habits."
+    min_goals: 1
+    max_goals: 3
+    linked_tasks: [Write literature review chapter]
+    unlinked_tasks: [Update pricing page copy, Fix broken signup form, Fix leaking kitchen tap, Renew passport]
+    forbidden_habits: [Gym, Reading, Meditation]
+
+  # habit counts derived from wording ("every day" -> 7)
+  - input: "I want to read every day and meditate at least 4 times. Also sort out the passport."
+    min_goals: 3
+    max_goals: 4
+    habit_targets: {Reading: 7, Meditation: 4}
+    linked_tasks: [Renew passport]
+
+  # user delegates the choice: should pick by importance/urgency
+  - input: "I'm swamped. Just pick the two most pressing things for me."
+    min_goals: 1
+    max_goals: 3
+    linked_tasks: [Fix broken signup form]
+    unlinked_tasks: [Format bibliography, Write launch blog post]
+
+  # multi-turn revision: later feedback must replace earlier intent
+  - turns:
+      - "Plan the website fixes and gym 3 times this week."
+      - "Actually drop the gym, I hurt my knee. Keep the rest."
+    min_goals: 1
+    max_goals: 3
+    linked_tasks: [Fix broken signup form]
+    forbidden_habits: [Gym]

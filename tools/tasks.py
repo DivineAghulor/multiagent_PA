@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import date
 
+from sqlalchemy import select
+
 from db.models import Task, TaskPriority, TaskStatus
 from db.session import get_session
 
@@ -56,7 +58,7 @@ def get_task(task_id: int) -> Task | None:
 
 def get_backlog() -> list[Task]:
     """Tasks with status BACKLOG, for weekly-planning triage."""
-    raise NotImplementedError
+    return list_tasks(status=TaskStatus.BACKLOG)
 
 
 def list_tasks(
@@ -65,11 +67,28 @@ def list_tasks(
     milestone_id: int | None = None,
     weekly_goal_id: int | None = None,
 ) -> list[Task]:
-    raise NotImplementedError
+    stmt = select(Task).order_by(Task.id)
+    if status is not None:
+        stmt = stmt.where(Task.status == status)
+    if project_id is not None:
+        stmt = stmt.where(Task.project_id == project_id)
+    if milestone_id is not None:
+        stmt = stmt.where(Task.milestone_id == milestone_id)
+    if weekly_goal_id is not None:
+        stmt = stmt.where(Task.weekly_goal_id == weekly_goal_id)
+    with get_session() as session:
+        return list(session.scalars(stmt).all())
 
 
 def update_task_status(task_id: int, status: TaskStatus) -> Task:
-    raise NotImplementedError
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        task.status = status
+        session.flush()
+        session.refresh(task)
+        return task
 
 
 def schedule_task(task_id: int, scheduled_for: date) -> Task:

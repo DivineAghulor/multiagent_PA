@@ -1,9 +1,28 @@
 # Fixed prompts + expected outputs for agents.pm.extraction.extract_tasks.
 # Run against the real provider with: uv run python evals/run_pm_backlog.py
+#
+# expected_task_count is required. expected_project_hints is optional: when
+# present, each listed hint must appear (case-insensitive substring) in some
+# extracted task's project_hint.
 cases:
+  # multi-task splitting
   - input: "I need to redesign the landing page and fix the login bug"
     expected_task_count: 2
   - input: "call the dentist, buy groceries, and finish the Q3 report"
     expected_task_count: 3
+  - input: "email Sarah about the contract, then book flights for the conference, and remind me to water the plants"
+    expected_task_count: 3
+  # no phantom tasks from non-actionable text
   - input: "not sure what to do today honestly"
     expected_task_count: 0
+  - input: "I finished the Q3 report yesterday and it went really well"
+    expected_task_count: 0
+  - input: "My sister visited yesterday and the weather has been awful all week. Anyway, I need to renew my passport."
+    expected_task_count: 1
+  # project hint extraction
+  - input: "For the Website project, update the pricing page copy"
+    expected_task_count: 1
+    expected_project_hints: ["website"]
+  - input: "On the mobile app I need to fix the crash on login, and separately I should pay the electricity bill"
+    expected_task_count: 2
+    expected_project_hints: ["mobile app"]

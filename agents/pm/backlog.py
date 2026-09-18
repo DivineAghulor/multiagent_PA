@@ -33,4 +33,6 @@ def add_tasks_to_backlog(text: str) -> str:
     they need to do. Use this when the user describes new work, not when
     they're asking about existing tasks."""
     tasks = capture_backlog_from_text(text)
+    if not tasks:
+        return "No tasks found in that text; nothing was added to the backlog."
     return f"Added {len(tasks)} task(s) to the backlog: " + ", ".join(t.title for t in tasks)

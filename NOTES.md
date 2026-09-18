@@ -13,12 +13,13 @@ resolved — this file should stay short.
 
 ### All `tools/*.py` CRUD functions are unimplemented stubs
 
-- **What:** Every function in `tools/tasks.py`, `tools/projects.py`,
+- **What:** Functions in `tools/tasks.py`, `tools/projects.py`,
   `tools/milestones.py`, `tools/weekly_goals.py`, `tools/habits.py`, and
-  `tools/calendar.py` currently `raise NotImplementedError`. Nothing in the
-  codebase calls them yet, so this is not masking a bug today — but any
-  Phase 1+ work that imports one of these and doesn't implement it will fail
-  loudly (by design) rather than silently.
+  `tools/calendar.py` that no phase has needed yet still `raise
+  NotImplementedError` (PM Phases 1-2 implemented the ones they use; see
+  `progress.md`). No implemented code path calls a remaining stub, so this is
+  not masking a bug today, but any new work that imports one without
+  implementing it will fail loudly (by design) rather than silently.
 - **Why it's here:** Per-phase implementation is expected to fill these in
   incrementally (PM track and Calendar track own different files). Anyone
   implementing agent/tool-calling logic against these should confirm the
@@ -32,6 +33,16 @@ resolved — this file should stay short.
 ---
 
 ## Resolved
+
+### `llm/factory.py` printed partial API keys on every model call
+
+Fixed 2026-09-18. Debug `print`s added while diagnosing provider routing
+(committed in `c6aeebe`) wrote the key's first 6 + last 4 characters to
+stdout, which lands in terminal scrollback and the Streamlit server log.
+10 of 39 characters doesn't make the key usable, but it shouldn't be
+logged at all. Replaced with presence-only `logging.debug`. The key value
+itself was never committed. Rule for future debugging: log `bool(key)`,
+never slices of it.
 
 ### ~~No Alembic migration generated yet~~
 

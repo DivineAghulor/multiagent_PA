@@ -230,10 +230,18 @@ class WeeklyGoal(Base, TimestampMixin):
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL")
     )
+    # A goal targets a project or a habit, never both (enforced in tools/weekly_goals.py).
+    habit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("habits.id", ondelete="SET NULL")
+    )
+    # Measurable target for the weekly review: completed HabitLogs for a habit
+    # goal, linked tasks done for a task goal; null for a qualitative goal.
+    target_count: Mapped[int | None] = mapped_column(Integer)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_notes: Mapped[str | None] = mapped_column(Text)
 
     project: Mapped["Project | None"] = relationship()
+    habit: Mapped["Habit | None"] = relationship()
     tasks: Mapped[list["Task"]] = relationship(back_populates="weekly_goal")
 
 

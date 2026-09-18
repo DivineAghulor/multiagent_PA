@@ -22,10 +22,17 @@ def main() -> int:
         batch = extract_tasks(case["input"])
         got = len(batch.tasks)
         expected = case["expected_task_count"]
-        status = "PASS" if got == expected else "FAIL"
-        if got != expected:
+        hints = [(t.project_hint or "").lower() for t in batch.tasks]
+        missing_hints = [
+            h for h in case.get("expected_project_hints", [])
+            if not any(h.lower() in got_hint for got_hint in hints)
+        ]
+        ok = got == expected and not missing_hints
+        if not ok:
             failures += 1
-        print(f"[{status}] {case['input']!r} -> {got} task(s) (expected {expected})")
+        print(f"[{'PASS' if ok else 'FAIL'}] {case['input']!r} -> {got} task(s) (expected {expected})")
+        if missing_hints:
+            print(f"         missing project_hint(s): {missing_hints}")
         for t in batch.tasks:
             print(f"         - {t.title!r} (project_hint={t.project_hint!r})")
 
