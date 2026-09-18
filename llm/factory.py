@@ -9,6 +9,13 @@ if TYPE_CHECKING:
 _SUPPORTED_PROVIDERS = {"anthropic", "google_genai", "openai", "xai"}
 
 
+def _mask(key: str | None) -> str:
+    """Render an API key for debug output without exposing it (see CLAUDE.md)."""
+    if not key:
+        return "<MISSING>"
+    return f"{key[:6]}...{key[-4:]} (len={len(key)})"
+
+
 def get_chat_model(provider: str, model: str, **kwargs: object) -> "BaseChatModel":
     """Return a configured BaseChatModel for the given provider.
 
@@ -23,24 +30,37 @@ def get_chat_model(provider: str, model: str, **kwargs: object) -> "BaseChatMode
     """
     provider = provider.lower()
 
+    # pydantic-settings loads .env into config.settings only — it never
+    # populates os.environ, so each provider SDK's own env-var lookup
+    # (ANTHROPIC_API_KEY, etc.) sees nothing unless we forward it explicitly.
+    from config import settings
+
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
+        kwargs.setdefault("api_key", settings.anthropic_api_key)
+        print(f"[llm.factory] provider=anthropic model={model} api_key={_mask(settings.anthropic_api_key)}")
         return ChatAnthropic(model=model, **kwargs)
 
     if provider == "google_genai":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
+        kwargs.setdefault("google_api_key", settings.google_api_key)
+        print(f"[llm.factory] provider=google_genai model={model} api_key={_mask(settings.google_api_key)}")
         return ChatGoogleGenerativeAI(model=model, **kwargs)
 
     if provider == "openai":
         from langchain_openai import ChatOpenAI
 
+        kwargs.setdefault("api_key", settings.openai_api_key)
+        print(f"[llm.factory] provider=openai model={model} api_key={_mask(settings.openai_api_key)}")
         return ChatOpenAI(model=model, **kwargs)
 
     if provider == "xai":
         from langchain_xai import ChatXAI
 
+        kwargs.setdefault("api_key", settings.xai_api_key)
+        print(f"[llm.factory] provider=xai model={model} api_key={_mask(settings.xai_api_key)}")
         return ChatXAI(model=model, **kwargs)
 
     raise ValueError(

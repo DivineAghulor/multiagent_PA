@@ -16,6 +16,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -152,6 +153,11 @@ class Task(Base, TimestampMixin):
         default=TaskPriority.MEDIUM,
         nullable=False,
     )
+    # 1-4 each, captured via the post-capture rating dialog (Phase 1). Distinct
+    # from `priority` above — see progress.md Phase 1 follow-ups for the open
+    # question of how the two relate.
+    importance: Mapped[int | None] = mapped_column(Integer)
+    urgency: Mapped[int | None] = mapped_column(Integer)
 
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL")

@@ -1,12 +1,21 @@
 """Typed, validated application settings, loaded from .env / the process env."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Anchored to this file, not the CWD: a relative ".env" silently resolves to
+# nothing when the process is launched from another directory, which makes
+# every setting fall back to its default (e.g. llm_provider -> "anthropic"
+# with no key) and surfaces as a confusing auth error rather than a missing
+# config error.
+_ENV_FILE = Path(__file__).resolve().parent / ".env"
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
     # Database — default matches the local dev convention (personal_assistant_dev)
     # using the default postgres role; override in .env if yours differ.

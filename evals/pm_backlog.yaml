@@ -1,4 +1,9 @@
-# Phase 1 placeholder: fixed prompts + expected outputs for the PM sub-agent
-# (backlog capture, weekly planning, decomposition, weekly review).
-# Format TBD when Phase 1 starts.
-cases: []
+# Fixed prompts + expected outputs for agents.pm.extraction.extract_tasks.
+# Run against the real provider with: uv run python evals/run_pm_backlog.py
+cases:
+  - input: "I need to redesign the landing page and fix the login bug"
+    expected_task_count: 2
+  - input: "call the dentist, buy groceries, and finish the Q3 report"
+    expected_task_count: 3
+  - input: "not sure what to do today honestly"
+    expected_task_count: 0
