@@ -55,4 +55,9 @@ def archive_project(project_id: int) -> Project:
 
 
 def delete_project(project_id: int) -> None:
-    raise NotImplementedError
+    """Delete a project and its milestones (cascade); its tasks stay, unlinked."""
+    with get_session() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ValueError(f"Project {project_id} not found")
+        session.delete(project)

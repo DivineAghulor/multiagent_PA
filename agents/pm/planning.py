@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from db.models import Habit, Project, ProjectStatus, Task, WeeklyGoal
-from llm.factory import get_default_chat_model
+from llm.factory import get_structured_model
 from tools.habits import list_habits
 from tools.projects import list_projects
 from tools.tasks import get_backlog
@@ -91,7 +91,9 @@ def render_planning_context(ctx: PlanningContext) -> str:
     existing = [f"- {g.description}" for g in ctx.existing_goals]
     return (
         f"Week being planned: starts Monday {ctx.week_start.isoformat()}.\n\n"
-        f"Backlog tasks:\n{_lines(tasks)}\n\n"
+        "Backlog tasks (importance and urgency are rated 1-4, where 1 is the "
+        "lowest and 4 the highest):\n"
+        f"{_lines(tasks)}\n\n"
         f"Active projects:\n{_lines(projects)}\n\n"
         f"Active habits:\n{_lines(habits)}\n\n"
         f"Goals already set for this week:\n{_lines(existing)}"
@@ -100,7 +102,7 @@ def render_planning_context(ctx: PlanningContext) -> str:
 
 def propose_weekly_plan(history: list[tuple[str, str]], ctx: PlanningContext) -> WeeklyPlanProposal:
     """One planning turn. `history` is the whole conversation as (role, text) pairs."""
-    model = get_default_chat_model().with_structured_output(WeeklyPlanProposal)
+    model = get_structured_model(WeeklyPlanProposal)
     system = PLANNING_SYSTEM_PROMPT + "\n\n" + render_planning_context(ctx)
     return model.invoke([("system", system), *history])
 

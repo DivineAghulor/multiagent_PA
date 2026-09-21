@@ -71,15 +71,15 @@ def test_render_context_shows_ids_ratings_and_existing_goals(seeded) -> None:
 def test_propose_weekly_plan_sends_context_and_full_history(seeded) -> None:
     expected = WeeklyPlanProposal(reply="Here's a plan.", goals=[])
     model = MagicMock()
-    model.with_structured_output.return_value.invoke.return_value = expected
+    model.invoke.return_value = expected
     history = [("user", "gym 3x"), ("assistant", "ok"), ("user", "and the pricing page")]
 
-    with patch("agents.pm.planning.get_default_chat_model", return_value=model):
+    with patch("agents.pm.planning.get_structured_model", return_value=model) as factory:
         result = propose_weekly_plan(history, load_planning_context(MONDAY))
 
     assert result is expected
-    model.with_structured_output.assert_called_once_with(WeeklyPlanProposal)
-    messages = model.with_structured_output.return_value.invoke.call_args.args[0]
+    factory.assert_called_once_with(WeeklyPlanProposal)  # provider-agnostic structured output
+    messages = model.invoke.call_args.args[0]
     assert messages[0][0] == "system"
     assert "Update pricing page copy" in messages[0][1]
     assert messages[1:] == history

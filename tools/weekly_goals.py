@@ -1,7 +1,7 @@
 """Typed CRUD tools for WeeklyGoal. Stubs are filled in per-phase; see NOTES.md."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -93,8 +93,47 @@ def update_weekly_goal_status(weekly_goal_id: int, status: WeeklyGoalStatus) -> 
 
 
 def record_weekly_review(weekly_goal_id: int, review_notes: str, status: WeeklyGoalStatus) -> WeeklyGoal:
-    """Attach notes + final status when comparing goals to completions."""
-    raise NotImplementedError
+    """Attach notes + final status when comparing goals to completions.
+    Overwrites any previous review of the same goal, so re-reviewing is idempotent."""
+    with get_session() as session:
+        goal = session.get(WeeklyGoal, weekly_goal_id)
+        if goal is None:
+            raise ValueError(f"WeeklyGoal {weekly_goal_id} not found")
+        goal.review_notes = review_notes
+        goal.status = status
+        goal.reviewed_at = datetime.now(timezone.utc)
+        session.flush()
+        session.refresh(goal)
+        return goal
+
+
+def carry_over_weekly_goal(weekly_goal_id: int, new_week_start: date) -> WeeklyGoal:
+    """Copy an unfinished goal into a later week with its not-done tasks, and mark
+    the original CARRIED_OVER. Completed tasks stay with the original week."""
+    if new_week_start.weekday() != 0:
+        raise ValueError("new_week_start must be a Monday")
+    with get_session() as session:
+        goal = session.get(WeeklyGoal, weekly_goal_id)
+        if goal is None:
+            raise ValueError(f"WeeklyGoal {weekly_goal_id} not found")
+        if new_week_start <= goal.week_start:
+            raise ValueError("can only carry a goal forward to a later week")
+
+        carried = WeeklyGoal(
+            week_start=new_week_start,
+            description=goal.description,
+            project_id=goal.project_id,
+            habit_id=goal.habit_id,
+            target_count=goal.target_count,
+        )
+        session.add(carried)
+        session.flush()
+        for task in goal.tasks:
+            if task.status not in (TaskStatus.DONE, TaskStatus.CANCELLED):
+                task.weekly_goal_id = carried.id
+        goal.status = WeeklyGoalStatus.CARRIED_OVER
+        session.flush()
+        return session.scalars(select(WeeklyGoal).where(WeeklyGoal.id == carried.id).options(*_EAGER)).one()
 
 
 def delete_weekly_goal(weekly_goal_id: int) -> None:

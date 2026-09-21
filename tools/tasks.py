@@ -1,7 +1,7 @@
 """Typed CRUD tools for Task. Stubs are filled in per-phase; see NOTES.md."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 
@@ -96,9 +96,32 @@ def schedule_task(task_id: int, scheduled_for: date) -> Task:
     raise NotImplementedError
 
 
-def complete_task(task_id: int) -> Task:
-    """Mark DONE and stamp completed_at."""
-    raise NotImplementedError
+def complete_task(task_id: int, completed_at: datetime | None = None) -> Task:
+    """Mark DONE and stamp completed_at (defaults to now; pass a value to backdate)."""
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        task.status = TaskStatus.DONE
+        task.completed_at = completed_at or datetime.now(timezone.utc)
+        session.flush()
+        session.refresh(task)
+        return task
+
+
+def reopen_task(task_id: int, status: TaskStatus = TaskStatus.TODO) -> Task:
+    """Undo a completion: back to TODO (or another open status) and clear completed_at."""
+    if status in (TaskStatus.DONE, TaskStatus.CANCELLED):
+        raise ValueError("reopen_task needs an open status")
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        task.status = status
+        task.completed_at = None
+        session.flush()
+        session.refresh(task)
+        return task
 
 
 def update_task(

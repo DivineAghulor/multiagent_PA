@@ -1,7 +1,7 @@
 """LLM chain that extracts structured tasks from freeform user text."""
 from __future__ import annotations
 
-from llm.factory import get_default_chat_model
+from llm.factory import get_structured_model
 
 from .schemas import ExtractedTaskBatch
 
@@ -13,8 +13,7 @@ invent tasks that weren't mentioned."""
 
 
 def extract_tasks(text: str) -> ExtractedTaskBatch:
-    model = get_default_chat_model()
-    structured_model = model.with_structured_output(ExtractedTaskBatch)
+    structured_model = get_structured_model(ExtractedTaskBatch)
     return structured_model.invoke(
         [
             ("system", EXTRACTION_SYSTEM_PROMPT),

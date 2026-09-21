@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     google_api_key: str | None = Field(None, alias="GOOGLE_API_KEY")
     openai_api_key: str | None = Field(None, alias="OPENAI_API_KEY")
     xai_api_key: str | None = Field(None, alias="XAI_API_KEY")
+    deepseek_api_key: str | None = Field(None, alias="DEEPSEEK_API_KEY")
 
     # Google OAuth (Calendar sub-agent, Phase 2)
     google_client_id: str | None = Field(None, alias="GOOGLE_CLIENT_ID")

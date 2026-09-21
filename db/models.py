@@ -131,6 +131,8 @@ class Milestone(Base, TimestampMixin):
         nullable=False,
     )
     due_date: Mapped[date | None] = mapped_column(Date)
+    # 1-based sequence within the project, set when a decomposition is confirmed.
+    position: Mapped[int | None] = mapped_column(Integer)
 
     project: Mapped["Project"] = relationship(back_populates="milestones")
     tasks: Mapped[list["Task"]] = relationship(back_populates="milestone")
@@ -153,7 +155,8 @@ class Task(Base, TimestampMixin):
         default=TaskPriority.MEDIUM,
         nullable=False,
     )
-    # 1-4 each, captured via the post-capture rating dialog (Phase 1). Distinct
+    # 1-4 each (1 = lowest, 4 = highest), captured via the post-capture rating
+    # dialog (Phase 1). Distinct
     # from `priority` above — see progress.md Phase 1 follow-ups for the open
     # question of how the two relate.
     importance: Mapped[int | None] = mapped_column(Integer)
