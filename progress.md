@@ -439,3 +439,90 @@ Cost note: the decomposition loop is chattier on DeepSeek than on Gemini —
 5 steps / 14 calls for one breakdown, and 6 steps / 22 calls for a revision
 turn, versus 3 steps / 4-5 calls on `gemini-3.6-flash`. Same quality of output,
 but budget for it now that the provider bills per token rather than per day.
+
+## Web track W0 — Schema prerequisites for the web app (2026-09-21)
+
+**Scope:** W0 of `docs/webapp-requirements.md` — the two schema changes the web
+app depends on, landed before any web code. Not part of either sub-agent track.
+
+**Changed:**
+- `docs/webapp-requirements.md` — new: requirements for the FastAPI + React web
+  app (single-user/no-auth, PM-track-only v1, structured screens with per-mode
+  chat). Records the three decisions taken this session in §2 and specifies
+  both schema changes in §6.7
+- `db/models.py` — new `WeeklyReview` (one row per week: `summary`,
+  `achieved_count`, `measurable_count`, `unplanned_count`, `generated_at`,
+  unique `week_start`); `Task.priority` documented as derived, not caller-set
+- `tools/tasks.py` — `derive_priority(importance, urgency)` (Eisenhower
+  quadrants; unrated → MEDIUM), applied in `create_task` and
+  `update_task_priority`. `priority` removed from the signatures of
+  `create_task` and the `update_task` stub — no caller passed it
+- `tools/reviews.py` — new: `save_week_summary` (upsert on `week_start`),
+  `get_week_summary`, `list_week_summaries`, `delete_week_summary`
+- `agents/pm/review.py` — `save_review(review, summary=None)` persists the
+  narrative alongside the counts it was written against
+- `app_test.py` — saves the generated summary and shows a stored one on load
+  with its timestamp
+- `alembic/versions/bc5df8360f9e_...` — creates `weekly_reviews` and backfills
+  `tasks.priority` from the pair
+
+**Tests:** `pytest` 125/125 (24 new: 14 in `test_task_priority.py`, 7 in
+`test_weekly_reviews.py`, 3 in `test_review.py`), zero live API calls. Migration
+applied, downgraded and re-applied against local Postgres; `tools/reviews.py`
+exercised against Postgres directly, since the suite runs on SQLite. The
+migration's backfill CASE was checked against `derive_priority` over all 25
+importance/urgency combinations — they agree.
+
+**Follow-ups:**
+- The snapshotted counts mean a re-review is what refreshes them; nothing
+  recomputes a stored row in place. Intended (see §6.7 SCH-2).
+- `derive_priority`'s rule now exists twice: Python and the migration's SQL.
+  The SQL copy is a one-time backfill and shouldn't be re-run, but if the rule
+  changes, a new migration needs the new mapping.
+- Person B needs telling before building the Calendar track's priority engine:
+  the pair is the rating system, `priority` is a derived bucket (§6.7 SCH-9).
+- Still open in `docs/webapp-requirements.md` §12: frontend framework
+  specifics, and who owns the web track.
+
+## Web track W1 — Backend skeleton and read-only screens (2026-09-21)
+
+**Scope:** W1 of `docs/webapp-requirements.md` §11 — FastAPI over the existing
+PM tools, plus a Next.js shell rendering real data. No model call on any path.
+
+**Changed:**
+- `api/` — new package. `main.py` (app, CORS pinned to `WEB_ORIGIN`,
+  `/api/health`), `schemas.py` (Pydantic out-models, distinct from the
+  LLM-facing `agents/pm/schemas.py`), `errors.py` (one `{"error": {type,
+  message}}` envelope), `deps.py` (server-side `today`, Monday-only week
+  parsing), `routers/{tasks,projects,habits,weeks,planning}.py` — reads only,
+  each handler one tool call
+- `llm/factory.py` — `provider_key_configured()`; presence only, so the health
+  check can report a misconfigured provider without handling the key
+- `config.py`, `.env.example` — `API_HOST` (loopback default), `API_PORT`,
+  `WEB_ORIGIN`
+- `web/` — Next.js 15 app router, TypeScript, Tailwind v4, shadcn-style
+  primitives copied into `web/components/ui/`. Screens: week (with history
+  navigation and the stored review), tasks (client-side filter and sort),
+  planning context preview, projects list and detail, review history. Reads run
+  in server components, so the API base URL never reaches the browser
+- `pyproject.toml` — fastapi, uvicorn; httpx (dev, for `TestClient`)
+
+**Tests:** `pytest` 145/145 (20 new in `tests/test_api_reads.py`), no live API
+call. Also smoke-tested against local Postgres with seed data, and both servers
+run together: every screen renders real rows, a non-Monday week gives a typed
+400, and stopping the backend produces the "backend isn't running" state rather
+than a stack trace. `npm run build` passes (9 routes).
+
+**Follow-ups:**
+- `ProjectDetailOut` can't be built with `model_validate` on the ORM object:
+  `milestones`/`tasks` are relationship names, so `from_attributes` lazy-loads
+  them off a detached instance. Built field by field instead. Any future
+  response model naming a relationship hits the same thing.
+- Pydantic's `ValidationError` subclasses `ValueError`, so a response model
+  that fails to build was being reported as the caller's bad request. It now
+  has its own handler returning 500; the test for it is in `test_api_reads.py`.
+- FR-3's sorting is done client-side. Fine for one user's whole task list; it
+  would need a tools-level change if the list ever paginates.
+- W2 writes need the `tools/*.py` stubs in §6.6 — `update_task`, `delete_task`,
+  `update_project`, `archive_project`, `deactivate_habit`, and a new
+  `update_habit`. None of them is called by W1.

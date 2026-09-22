@@ -22,6 +22,7 @@ from agents.pm.review import (
 )
 from db.models import HabitFrequency, TaskStatus, WeeklyGoalStatus
 from tools.habits import create_habit, get_habit_logs, log_habit_completion, remove_habit_log
+from tools.reviews import get_week_summary
 from tools.tasks import complete_task, create_task, get_task, list_tasks, reopen_task
 from tools.weekly_goals import carry_over_weekly_goal, create_weekly_goal, get_weekly_goal, list_weekly_goals
 
@@ -184,6 +185,38 @@ def test_save_review_writes_notes_and_status_and_is_idempotent(week) -> None:
     task_goal = get_weekly_goal(week["task_goal"].id)
     assert task_goal.status == WeeklyGoalStatus.ACHIEVED
     assert task_goal.review_notes == "Ship the pricing page: 3/3 task(s) done"
+
+
+def test_save_review_persists_the_summary_with_the_counts_it_describes(week) -> None:
+    review = build_week_review(MONDAY)
+
+    save_review(review, "You had a decent week.")
+
+    stored = get_week_summary(MONDAY)
+    assert stored.summary == "You had a decent week."
+    # snapshotted, so later completions can't make the prose contradict them
+    assert (stored.achieved_count, stored.measurable_count, stored.unplanned_count) == (0, 2, 1)
+
+    complete_task(week["tasks"][2].id, completed_at=at(SUNDAY))
+    assert get_week_summary(MONDAY).achieved_count == 0
+
+
+def test_save_review_without_a_summary_persists_no_narrative(week) -> None:
+    save_review(build_week_review(MONDAY))
+
+    assert get_week_summary(MONDAY) is None
+    # per-goal notes are still written
+    assert get_weekly_goal(week["habit_goal"].id).reviewed_at is not None
+
+
+def test_re_reviewing_replaces_the_stored_summary(week) -> None:
+    save_review(build_week_review(MONDAY), "First take.")
+    complete_task(week["tasks"][2].id, completed_at=at(SUNDAY))
+    save_review(build_week_review(MONDAY), "Second take.")
+
+    stored = get_week_summary(MONDAY)
+    assert stored.summary == "Second take."
+    assert stored.achieved_count == 1
 
 
 def test_missed_goals_lists_only_measurable_misses(week) -> None:

@@ -33,6 +33,7 @@ from agents.pm.review import (
 from db.models import ProjectStatus, TaskStatus
 from tools.habits import log_habit_completion, remove_habit_log
 from tools.projects import list_projects
+from tools.reviews import get_week_summary
 from tools.tasks import complete_task, reopen_task, update_task_priority
 from tools.weekly_goals import carry_over_weekly_goal
 
@@ -354,13 +355,18 @@ def review_page() -> None:
         except Exception as e:  # provider/network errors: nothing is saved
             st.error(f"The model call failed, so no review was saved: {e}")
         else:
-            save_review(review)
+            save_review(review, summary)
             st.session_state.rv_summary = summary
             st.rerun()
 
-    if st.session_state.get("rv_summary"):
-        st.write(st.session_state.rv_summary)
-        st.caption("Per-goal notes and achieved/missed status have been saved.")
+    stored = get_week_summary(week_start)
+    if summary := st.session_state.get("rv_summary") or (stored.summary if stored else None):
+        st.write(summary)
+        if stored:
+            st.caption(
+                f"Saved {stored.generated_at:%Y-%m-%d %H:%M} UTC, with per-goal "
+                "notes and achieved/missed status."
+            )
 
     if missed := missed_goals(review):
         st.subheader("Carry into next week")

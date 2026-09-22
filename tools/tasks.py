@@ -16,21 +16,34 @@ def _validate_priority_pair(importance: int | None, urgency: int | None) -> None
         raise ValueError("urgency must be between 1 and 4")
 
 
+def derive_priority(importance: int | None, urgency: int | None) -> TaskPriority:
+    """The coarse Task.priority bucket for an importance/urgency pair.
+
+    Eisenhower quadrants: important + urgent is URGENT, important alone is HIGH,
+    urgent alone is MEDIUM, neither is LOW. An unrated task (either value unset)
+    is MEDIUM, the column's default. MEDIUM therefore covers both "unrated" and
+    "urgent but not important" — use the pair itself to tell those apart.
+    """
+    if importance is None or urgency is None:
+        return TaskPriority.MEDIUM
+    if importance >= 3:
+        return TaskPriority.URGENT if urgency >= 3 else TaskPriority.HIGH
+    return TaskPriority.MEDIUM if urgency >= 3 else TaskPriority.LOW
+
+
 def create_task(
     title: str,
     description: str | None = None,
     project_id: int | None = None,
     milestone_id: int | None = None,
     weekly_goal_id: int | None = None,
-    priority: TaskPriority = TaskPriority.MEDIUM,
     due_date: date | None = None,
     importance: int | None = None,
     urgency: int | None = None,
 ) -> Task:
     """Create a task, defaulting to TaskStatus.BACKLOG.
 
-    `importance`/`urgency` are separate from `priority` — see the note on
-    Task.importance in db/models.py.
+    `priority` is not a parameter: it's derived from `importance`/`urgency`.
     """
     _validate_priority_pair(importance, urgency)
     with get_session() as session:
@@ -40,7 +53,7 @@ def create_task(
             project_id=project_id,
             milestone_id=milestone_id,
             weekly_goal_id=weekly_goal_id,
-            priority=priority,
+            priority=derive_priority(importance, urgency),
             due_date=due_date,
             importance=importance,
             urgency=urgency,
@@ -128,7 +141,6 @@ def update_task(
     task_id: int,
     title: str | None = None,
     description: str | None = None,
-    priority: TaskPriority | None = None,
     due_date: date | None = None,
     project_id: int | None = None,
     milestone_id: int | None = None,
@@ -150,6 +162,7 @@ def update_task_priority(task_id: int, importance: int, urgency: int) -> Task:
             raise ValueError(f"Task {task_id} not found")
         task.importance = importance
         task.urgency = urgency
+        task.priority = derive_priority(importance, urgency)
         session.flush()
         session.refresh(task)
         return task

@@ -11,6 +11,23 @@ resolved — this file should stay short.
 
 ## Open
 
+### The web API has no authentication at all
+
+- **What:** Every endpoint under `api/` is unauthenticated and unscoped. Any
+  request that reaches the process can read the whole database, and once W2
+  lands, write to it and spend the provider key. This is a deliberate v1
+  decision (single user, no `User` table — `docs/webapp-requirements.md` §2),
+  not an oversight, but it means the only thing protecting the data is where
+  the process is listening.
+- **Why it's here:** The mitigation is configuration, so it can be undone
+  silently. `API_HOST` defaults to `127.0.0.1` and CORS admits only
+  `WEB_ORIGIN`; changing either in a `.env`, or putting a tunnel or reverse
+  proxy in front of it, exposes everything with no code change and no warning.
+  Anyone deploying this anywhere but their own machine must read SEC-1 first.
+- **Resolve when:** Authentication exists, or the app is retired. Note that
+  adding it is a schema change (a `User` table plus a `user_id` FK on every
+  model and scoping in every `tools/*` query), not a middleware drop-in.
+
 ### All `tools/*.py` CRUD functions are unimplemented stubs
 
 - **What:** Functions in `tools/tasks.py`, `tools/projects.py`,

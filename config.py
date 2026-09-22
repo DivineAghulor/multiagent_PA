@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # Gmail (email sub-agent, later phase)
     gmail_app_password: str | None = Field(None, alias="GMAIL_APP_PASSWORD")
 
+    # Web app (api/) — the backend binds to localhost by default and allows a
+    # single frontend origin. Exposing it on a non-local interface without auth
+    # would expose the whole DB and the provider key by request; see
+    # docs/webapp-requirements.md SEC-1/SEC-2 before changing these.
+    api_host: str = Field("127.0.0.1", alias="API_HOST")
+    api_port: int = Field(8000, alias="API_PORT")
+    web_origin: str = Field("http://localhost:3000", alias="WEB_ORIGIN")
+
     # LangSmith / tracing
     langsmith_api_key: str | None = Field(None, alias="LANGSMITH_API_KEY")
     langsmith_project: str = Field("multiagent-pa", alias="LANGSMITH_PROJECT")

@@ -91,6 +91,31 @@ def get_chat_model(provider: str, model: str, **kwargs: object) -> "BaseChatMode
     )
 
 
+# Which Settings field holds each provider's key. Used only to answer "is a key
+# configured?" — the values themselves never leave this module.
+_PROVIDER_KEY_FIELDS = {
+    "anthropic": "anthropic_api_key",
+    "google_genai": "google_api_key",
+    "openai": "openai_api_key",
+    "xai": "xai_api_key",
+    "deepseek": "deepseek_api_key",
+}
+
+
+def provider_key_configured(provider: str | None = None) -> bool:
+    """Whether a key is set for `provider` (default: the configured one).
+
+    Presence only, so callers such as the API health check can report that the
+    provider is misconfigured without ever handling the key — not even a slice
+    of it (see the resolved NOTES.md entry on logging partial keys).
+    """
+    from config import settings
+
+    provider = (provider or settings.llm_provider).lower()
+    field = _PROVIDER_KEY_FIELDS.get(provider)
+    return bool(field and getattr(settings, field, None))
+
+
 def get_default_chat_model(**kwargs: object) -> "BaseChatModel":
     """Build a chat model from LLM_PROVIDER/LLM_MODEL in config.settings."""
     from config import settings

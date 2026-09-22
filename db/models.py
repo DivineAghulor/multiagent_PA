@@ -150,15 +150,17 @@ class Task(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+    # Derived from (importance, urgency) by tools.tasks.derive_priority on every
+    # write that touches the pair — never set directly by a caller. Stored
+    # rather than computed on read so SQL can sort and filter on it.
     priority: Mapped[TaskPriority] = mapped_column(
         SqlEnum(TaskPriority, name="task_priority"),
         default=TaskPriority.MEDIUM,
         nullable=False,
     )
     # 1-4 each (1 = lowest, 4 = highest), captured via the post-capture rating
-    # dialog (Phase 1). Distinct
-    # from `priority` above — see progress.md Phase 1 follow-ups for the open
-    # question of how the two relate.
+    # dialog (Phase 1). This pair is the rating system; `priority` above is a
+    # coarse projection of it.
     importance: Mapped[int | None] = mapped_column(Integer)
     urgency: Mapped[int | None] = mapped_column(Integer)
 
@@ -246,6 +248,27 @@ class WeeklyGoal(Base, TimestampMixin):
     project: Mapped["Project | None"] = relationship()
     habit: Mapped["Habit | None"] = relationship()
     tasks: Mapped[list["Task"]] = relationship(back_populates="weekly_goal")
+
+
+class WeeklyReview(Base, TimestampMixin):
+    """The written summary for one reviewed week, one row per week.
+
+    The counts are snapshotted at generation time rather than recomputed: a task
+    completed after the review was written would otherwise leave the stored
+    prose contradicting the numbers shown beside it.
+    """
+
+    __tablename__ = "weekly_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    week_start: Mapped[date] = mapped_column(
+        Date, nullable=False, unique=True, index=True
+    )  # Monday; matches WeeklyGoal.week_start
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    achieved_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    measurable_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    unplanned_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class CalendarEvent(Base, TimestampMixin):

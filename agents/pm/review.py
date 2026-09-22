@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from db.models import Task, TaskStatus, WeeklyGoal, WeeklyGoalStatus
 from llm.factory import get_default_chat_model
 from tools.habits import get_habit_logs
+from tools.reviews import save_week_summary
 from tools.tasks import list_tasks
 from tools.weekly_goals import list_weekly_goals, record_weekly_review
 
@@ -191,14 +192,25 @@ def goal_note(g: GoalReview) -> str:
     return note
 
 
-def save_review(review: WeekReview) -> list[WeeklyGoal]:
+def save_review(review: WeekReview, summary: str | None = None) -> list[WeeklyGoal]:
     """Write per-goal notes and ACHIEVED/MISSED. Unmeasurable goals are left alone.
-    Re-running a review for the same week overwrites its own notes."""
+    Re-running a review for the same week overwrites its own notes.
+
+    With `summary`, the week's narrative is persisted too, alongside the counts
+    it was written against (see tools/reviews.py on why they're snapshotted)."""
     saved = []
     for g in review.goals:
         if g.status is None:
             continue
         saved.append(record_weekly_review(g.goal.id, goal_note(g), g.status))
+    if summary is not None:
+        save_week_summary(
+            week_start=review.week_start,
+            summary=summary,
+            achieved_count=review.achieved_count,
+            measurable_count=review.measurable_count,
+            unplanned_count=len(review.unplanned_done),
+        )
     return saved
 
 
