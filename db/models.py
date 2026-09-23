@@ -16,6 +16,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -130,6 +131,8 @@ class Milestone(Base, TimestampMixin):
         nullable=False,
     )
     due_date: Mapped[date | None] = mapped_column(Date)
+    # 1-based sequence within the project, set when a decomposition is confirmed.
+    position: Mapped[int | None] = mapped_column(Integer)
 
     project: Mapped["Project"] = relationship(back_populates="milestones")
     tasks: Mapped[list["Task"]] = relationship(back_populates="milestone")
@@ -147,11 +150,19 @@ class Task(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+    # Derived from (importance, urgency) by tools.tasks.derive_priority on every
+    # write that touches the pair — never set directly by a caller. Stored
+    # rather than computed on read so SQL can sort and filter on it.
     priority: Mapped[TaskPriority] = mapped_column(
         SqlEnum(TaskPriority, name="task_priority"),
         default=TaskPriority.MEDIUM,
         nullable=False,
     )
+    # 1-4 each (1 = lowest, 4 = highest), captured via the post-capture rating
+    # dialog (Phase 1). This pair is the rating system; `priority` above is a
+    # coarse projection of it.
+    importance: Mapped[int | None] = mapped_column(Integer)
+    urgency: Mapped[int | None] = mapped_column(Integer)
 
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL")
@@ -224,11 +235,40 @@ class WeeklyGoal(Base, TimestampMixin):
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL")
     )
+    # A goal targets a project or a habit, never both (enforced in tools/weekly_goals.py).
+    habit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("habits.id", ondelete="SET NULL")
+    )
+    # Measurable target for the weekly review: completed HabitLogs for a habit
+    # goal, linked tasks done for a task goal; null for a qualitative goal.
+    target_count: Mapped[int | None] = mapped_column(Integer)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_notes: Mapped[str | None] = mapped_column(Text)
 
     project: Mapped["Project | None"] = relationship()
+    habit: Mapped["Habit | None"] = relationship()
     tasks: Mapped[list["Task"]] = relationship(back_populates="weekly_goal")
+
+
+class WeeklyReview(Base, TimestampMixin):
+    """The written summary for one reviewed week, one row per week.
+
+    The counts are snapshotted at generation time rather than recomputed: a task
+    completed after the review was written would otherwise leave the stored
+    prose contradicting the numbers shown beside it.
+    """
+
+    __tablename__ = "weekly_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    week_start: Mapped[date] = mapped_column(
+        Date, nullable=False, unique=True, index=True
+    )  # Monday; matches WeeklyGoal.week_start
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    achieved_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    measurable_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    unplanned_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class CalendarEvent(Base, TimestampMixin):

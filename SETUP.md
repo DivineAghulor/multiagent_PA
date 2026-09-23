@@ -46,6 +46,35 @@ methods (`winget`, `brew`, `pipx`, etc.) if these don't fit your setup.
 6. uv run pytest               # confirms the environment works
 ```
 
+## Running the web app
+
+Two processes, both local. The backend has no authentication by design, so keep
+it on a loopback address — see the `NOTES.md` entry before changing `API_HOST`.
+
+```
+# terminal 1 — API (http://127.0.0.1:8000, docs at /docs)
+uv run uvicorn api.main:app --reload
+
+# terminal 2 — frontend (http://localhost:3000)
+cd web
+npm install                    # first time only; needs Node 22+
+cp .env.local.example .env.local   # optional: only if the API isn't on port 8000
+npm run dev
+```
+
+The frontend is a separate npm project and is deliberately not managed by `uv`.
+`uv run pytest` covers the API and agents; in `web/`, `npm test` runs the
+component tests and `npm run build` type-checks.
+
+The model-backed actions (capture, planning, breaking a project down, drafting
+a week review) need the provider key in `.env`; without it the header shows
+"Degraded" and everything else keeps working. Unconfirmed planning and
+breakdown drafts are held in the API process's memory, so restarting
+`uvicorn --reload` (including on a code change) discards them.
+
+The old Streamlit harness (`app_test.py`) was retired once the web app reached
+parity.
+
 ## Notes
 
 - `uv sync` creates `.venv` for you — no manual `python -m venv` step needed.

@@ -1,0 +1,72 @@
+# Fixed weeks with known outcomes for agents.pm.review.summarize_week.
+# Run against the real provider with:
+#   uv run python evals/run_pm_weekly_review.py
+#
+# Each case seeds its own in-memory SQLite DB (never the dev DB) with the
+# habits, goals, tasks and habit logs below, builds the review deterministically,
+# then asks the real model for the summary. What's checked is whether the prose
+# tells the truth about facts the code computed — the counts themselves are
+# already covered by unit tests.
+#
+# Per case:
+#   week_start        Monday of the reviewed week
+#   habits            [{name, target_per_period}]
+#   goals             [{description, habit, logged_days, tasks, done, target}]
+#                       habit + logged_days  -> habit goal with N completions
+#                       tasks + done         -> task goal; `done` titles are completed
+#                       neither              -> qualitative goal
+#   unplanned_done    task titles completed in the week but not part of a goal
+#   must_mention      case-insensitive substrings that must appear
+#   must_not_mention  substrings that must not appear
+#   word_min/word_max length bounds on the summary
+today: 2026-09-21
+
+cases:
+  - name: mixed week
+    week_start: 2026-09-14
+    habits: [{name: Gym, target_per_period: 3}]
+    goals:
+      - {description: Gym three times, habit: Gym, target: 3, logged_days: 2}
+      - description: Ship the pricing page
+        tasks: [Update pricing copy, Fix signup form, Write launch post]
+        done: [Update pricing copy, Fix signup form]
+    unplanned_done: [Renew passport]
+    # alternatives: any one counts, since prose may say "twice out of three"
+    must_mention: [["2", "two", "twice"], ["3", "three"], "passport"]
+    must_not_mention: ["all of your goals", "every goal"]
+    word_min: 60
+    word_max: 400
+
+  - name: everything achieved
+    week_start: 2026-09-14
+    habits: [{name: Reading, target_per_period: 2}]
+    goals:
+      - {description: Read twice, habit: Reading, target: 2, logged_days: 2}
+      - {description: Fix the signup flow, tasks: [Fix signup form], done: [Fix signup form]}
+    must_mention: ["read", "signup", ["both", "2 of 2", "2 out of 2"]]
+    # bare "missed" is fine in a negation ("no missed target"); catch real claims of failure
+    must_not_mention: ["fell short", "you missed"]
+    word_min: 40
+    word_max: 350
+
+  - name: nothing done
+    week_start: 2026-09-14
+    habits: [{name: Gym, target_per_period: 3}]
+    goals:
+      - {description: Gym three times, habit: Gym, target: 3, logged_days: 0}
+      - {description: Ship the pricing page, tasks: [Update pricing copy, Fix signup form], done: []}
+    must_mention: ["0", "pricing"]
+    must_not_mention: ["great progress", "well done on completing"]
+    word_min: 40
+    word_max: 400
+
+  - name: unmeasurable goal only
+    week_start: 2026-09-14
+    goals:
+      - {description: Be more focused}
+    unplanned_done: [Renew passport]
+    must_mention: ["passport", ["measurable", "measure", "track"]]
+    # "zero were achieved" is correct; what must not appear is a claim it WAS achieved
+    must_not_mention: ["goal achieved", "you achieved your goal", "completed the goal"]
+    word_min: 30
+    word_max: 300

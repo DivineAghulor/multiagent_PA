@@ -17,10 +17,19 @@ dependencies = [
     "langchain-openai>=0.3",
     "langchain-xai>=0.2",
     "langsmith>=0.1.140",
+    "pyyaml>=6.0.3",
+    "langchain-deepseek>=1.1.0",
+    "truststore>=0.10.4",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.3",
+    "google-api-python-client>=2.198.0",
+    "google-auth-oauthlib>=1.4.0",
+    "google-auth-httplib2>=0.4.1",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=8.0",
     "pytest-mock>=3.14",
 ]

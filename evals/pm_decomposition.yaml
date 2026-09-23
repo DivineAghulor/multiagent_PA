@@ -1,0 +1,80 @@
+# Fixed prompts + expected properties for agents.pm.decomposition (the
+# iterative tool-calling loop). Run against the real provider with:
+#   uv run python evals/run_pm_decomposition.py
+#
+# Each case gets a fresh in-memory SQLite DB seeded with `fixture` (never the
+# dev DB). A case starts either a new project (`project: {name, description}`)
+# or an existing fixture project (`existing: <name>`), then runs each of
+# `turns` through the loop in order; the final draft is checked.
+#
+# Always checked (unless expect_no_milestones): no step-limit hit, >= 2 tool
+# calls, no new milestone without tasks, no near-duplicate task titles, no new
+# task near-duplicating an existing task it should have attached, and the
+# draft confirms cleanly into the DB.
+# Optional expectations:
+#   min_milestones / max_milestones   counted over the whole draft, existing included
+#   max_tasks_per_milestone
+#   keywords_any            at least one appears (case-insensitive) in some milestone/task title
+#   must_attach             existing task titles that must be attached, not re-created
+#   expect_due_dates        at least one milestone has a due date
+#   latest_due              no due date after this (YYYY-MM-DD)
+#   expect_no_milestones    the model should ask a question instead of drafting
+today: 2026-09-18
+
+fixture:
+  projects:
+    - name: Website relaunch
+      description: Relaunch the company marketing site with a new design and signup flow
+      milestones:
+        - name: Design approved
+          tasks: [Draft wireframes]
+      tasks: [Fix broken signup form, Write new homepage copy, Set up analytics]
+
+cases:
+  - name: new project with a timeline
+    project:
+      name: Launch a podcast
+      description: Weekly interview podcast about indie game development. First episode live in 6 weeks.
+    turns: ["Break this down for me."]
+    min_milestones: 3
+    max_milestones: 7
+    max_tasks_per_milestone: 10
+    keywords_any: [record, publish, edit]
+    expect_due_dates: true
+    latest_due: 2026-11-05
+
+  - name: new personal project with a hard deadline
+    project:
+      name: Run a half marathon
+      description: I can run 5k comfortably now. The race is on 2026-12-06.
+    turns: ["Plan my training and prep."]
+    min_milestones: 3
+    max_milestones: 7
+    max_tasks_per_milestone: 10
+    keywords_any: [run, training, race]
+    latest_due: 2026-12-06
+
+  - name: existing project reuses backlog tasks
+    existing: Website relaunch
+    turns: ["Plan the rest of this project through to launch."]
+    min_milestones: 3
+    max_milestones: 7
+    must_attach: [Fix broken signup form, Write new homepage copy]
+    keywords_any: [launch]
+
+  - name: revision shrinks the plan
+    project:
+      name: Move to Berlin
+      description: Relocating from London in 3 months for a new job. Visa is already sorted.
+    turns:
+      - "Break it down."
+      - "That's too detailed. Cut it to at most 3 milestones and keep only the essentials."
+    min_milestones: 1
+    max_milestones: 3
+    keywords_any: [berlin, housing, tenancy, registration, anmeldung]
+
+  - name: too vague to decompose
+    project:
+      name: Stuff
+    turns: ["help"]
+    expect_no_milestones: true
