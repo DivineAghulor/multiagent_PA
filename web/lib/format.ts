@@ -20,11 +20,28 @@ export function formatTimestamp(iso: string | null): string {
   });
 }
 
+/** Calendar arithmetic on ISO dates. Done in UTC throughout: mixing a local
+ * midnight with toISOString() shifts the date by a day east of UTC. */
 export function addDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + days);
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** Monday of the week containing an ISO date. */
+export function mondayOf(iso: string): string {
+  const weekday = (new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7; // Monday = 0
+  return addDays(iso, -weekday);
+}
+
+export const STATUS_ORDER: TaskStatus[] = [
+  "backlog",
+  "todo",
+  "in_progress",
+  "blocked",
+  "done",
+  "cancelled",
+];
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",

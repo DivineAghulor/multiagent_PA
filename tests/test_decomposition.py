@@ -348,3 +348,52 @@ def test_add_milestone_can_seed_tasks_in_one_call() -> None:
     assert [[t.title for t in m.tasks] for m in d.milestones] == [["Buy a microphone", "Record"], ["Publish episode 1"]]
     first = [m for m in result.history if isinstance(m, ToolMessage)][0].content
     assert "Error adding 'buy a microphone'" in first
+
+
+# --- progress callback (NFR-2) ---------------------------------------------
+
+def test_progress_is_reported_per_model_step_and_per_tool_call() -> None:
+    from agents.pm.decomposition import TurnProgress
+
+    d = start_new_project_draft("Podcast")
+    model = ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    call("add_milestone", name="Pilot recorded"),
+                    call("add_task", milestone_ref="M1", title="Record episode 1"),
+                ],
+            ),
+            AIMessage(content="Done."),
+        ]
+    )
+    events: list[TurnProgress] = []
+
+    result = run_turn(model, d, on_progress=events.append)
+
+    assert [(e.phase, e.step, e.tool_calls, e.tool) for e in events] == [
+        ("step", 1, 0, None),
+        ("tool", 1, 1, "add_milestone"),
+        ("tool", 1, 2, "add_task"),
+        ("step", 2, 2, None),
+    ]
+    assert (result.steps, result.tool_calls) == (2, 2)
+
+
+def test_raising_from_the_progress_callback_stops_the_turn() -> None:
+    class Stop(Exception):
+        pass
+
+    d = start_new_project_draft("Podcast")
+    model = ScriptedModel([AIMessage(content="", tool_calls=[call("add_milestone", name="Pilot recorded")])])
+
+    def stop_on_second_step(event) -> None:
+        if event.phase == "step" and event.step == 2:
+            raise Stop
+
+    with pytest.raises(Stop):
+        run_turn(model, d, on_progress=stop_on_second_step)
+
+    assert len(model.seen) == 1  # no model call after the stop
+

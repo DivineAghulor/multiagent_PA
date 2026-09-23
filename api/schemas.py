@@ -12,8 +12,9 @@ the tool that loaded it eagerly passes it in explicitly.
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from db.models import (
     HabitFrequency,
@@ -171,6 +172,101 @@ class PlanningContextOut(BaseModel):
     rendered: str
 
 
+class ChatMessageOut(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str
+
+
+class TaskRefOut(BaseModel):
+    """A task named by id and title only, where the full row isn't needed."""
+
+    id: int
+    title: str
+
+
+class ProposalGoalOut(BaseModel):
+    """A proposed goal with its IDs resolved to names for display (FR-8).
+    Every ID here survived sanitize_proposal, so each one is real (S-6)."""
+
+    description: str
+    project_id: int | None
+    project_name: str | None
+    habit_id: int | None
+    habit_name: str | None
+    target_count: int | None
+    tasks: list[TaskRefOut]
+
+
+class ProposalOut(BaseModel):
+    reply: str
+    goals: list[ProposalGoalOut]
+
+
+class PlanningSessionOut(BaseModel):
+    """The whole state of a planning conversation. Every session endpoint
+    returns it, so the client never has to merge deltas (FR-7)."""
+
+    session_id: str
+    week_start: date
+    context: PlanningContextOut
+    messages: list[ChatMessageOut]
+    proposal: ProposalOut | None  # the whole plan as of the last turn
+    warnings: list[str]  # what sanitising changed in the last turn's proposal
+
+
+# --- Decomposition -------------------------------------------------------
+
+class DraftTaskOut(BaseModel):
+    ref: str  # T3 — the model's handle for it; stable for the life of the draft
+    title: str
+    description: str | None
+    existing_task_id: int | None  # set: an existing backlog task being attached
+
+
+class DraftMilestoneOut(BaseModel):
+    ref: str  # M1
+    name: str
+    description: str | None
+    due_date: date | None
+    existing_id: int | None  # set: already in the DB, only gains tasks/order
+    existing_task_titles: list[str]  # tasks it already has in the DB
+    tasks: list[DraftTaskOut]  # what this draft adds under it
+
+
+class DraftOut(BaseModel):
+    project_name: str
+    project_description: str | None
+    project_id: int | None  # None: a new project, created on confirm
+    milestones: list[DraftMilestoneOut]
+    eligible_tasks: list[TaskRefOut]  # existing tasks the model may attach
+    new_task_count: int
+
+
+class TurnStatsOut(BaseModel):
+    """What the last turn cost (NFR-3) and whether it hit the step cap (FR-12)."""
+
+    steps: int  # model calls
+    tool_calls: int
+    hit_limit: bool
+
+
+class DecompositionSessionOut(BaseModel):
+    session_id: str
+    draft: DraftOut
+    messages: list[ChatMessageOut]
+    last_turn: TurnStatsOut | None
+
+
+class DecompositionResultOut(BaseModel):
+    project: ProjectOut
+    milestones: list[MilestoneOut]
+    new_tasks: list[TaskOut]
+
+
+class ReviewDraftOut(BaseModel):
+    summary: str
+
+
 # --- Health --------------------------------------------------------------
 
 class HealthOut(BaseModel):
@@ -183,3 +279,171 @@ class HealthOut(BaseModel):
     provider_key_configured: bool
     tracing: bool
     today: date
+
+
+# --- Request bodies ------------------------------------------------------
+#
+# Partial updates (the *UpdateIn models) distinguish an omitted field from an
+# explicit null: omitted means "leave it alone", null means "clear it". The
+# handler passes `model_dump(exclude_unset=True)` straight to the tool, whose
+# UNSET defaults cover the omitted ones.
+
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+Text = Annotated[str, StringConstraints(max_length=5000)]
+Rating = Annotated[int, Field(ge=1, le=4)]
+
+
+class _In(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class _PartialIn(_In):
+    # Fields that may be omitted but, when present, may not be null.
+    _required_if_present: tuple[str, ...] = ()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_null_for_required(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for name in cls._required_if_present.default:  # type: ignore[attr-defined]
+                if name in data and data[name] is None:
+                    raise ValueError(f"{name} may be omitted but not null")
+        return data
+
+
+class CaptureIn(_In):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
+
+
+class TaskUpdateIn(_PartialIn):
+    _required_if_present = ("title",)
+
+    title: Name | None = None
+    description: Text | None = None
+    due_date: date | None = None
+    project_id: int | None = None
+    milestone_id: int | None = None
+
+
+class PriorityIn(_In):
+    importance: Rating
+    urgency: Rating
+
+
+class StatusIn(_In):
+    status: TaskStatus
+
+
+class ScheduleIn(_In):
+    scheduled_for: date | None
+
+
+class ProjectCreateIn(_In):
+    name: Name
+    description: Text | None = None
+    target_date: date | None = None
+
+
+class ProjectUpdateIn(_PartialIn):
+    _required_if_present = ("name", "status")
+
+    name: Name | None = None
+    description: Text | None = None
+    status: ProjectStatus | None = None
+    target_date: date | None = None
+
+
+class HabitCreateIn(_In):
+    name: Name
+    description: Text | None = None
+    frequency: HabitFrequency = HabitFrequency.DAILY
+    target_per_period: Annotated[int, Field(ge=1, le=100)] = 1
+
+
+class HabitUpdateIn(_PartialIn):
+    _required_if_present = ("name", "frequency", "target_per_period", "active")
+
+    name: Name | None = None
+    description: Text | None = None
+    frequency: HabitFrequency | None = None
+    target_per_period: Annotated[int, Field(ge=1, le=100)] | None = None
+    active: bool | None = None
+
+
+class MilestoneUpdateIn(_In):
+    """update_milestone treats None as "unchanged", so nothing here can be cleared."""
+
+    name: Name | None = None
+    description: Text | None = None
+    status: MilestoneStatus | None = None
+    due_date: date | None = None
+
+
+class HabitLogIn(_In):
+    date: date
+
+
+Message = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
+
+
+class PlanGoalEditIn(_In):
+    """The user's edit of one proposed goal, by its position in the proposal."""
+
+    index: Annotated[int, Field(ge=0)]
+    description: Name
+    target_count: Annotated[int, Field(ge=1)] | None = None
+
+
+class PlanConfirmIn(_In):
+    """Omit `goals` to confirm the proposal as it stands. Otherwise only the
+    listed goals are written, with the given wording and target; what each goal
+    links to (project, habit, tasks) always comes from the proposal."""
+
+    goals: list[PlanGoalEditIn] | None = None
+
+
+class PlanningStartIn(_In):
+    week_start: date | None = None  # defaults to planning_week_start(today)
+
+
+class MessageIn(_In):
+    text: Message
+
+
+class DecompositionStartIn(_In):
+    """Either an existing project to extend, or a new one to create on confirm."""
+
+    project_id: int | None = None
+    name: Name | None = None
+    description: Text | None = None
+
+    @model_validator(mode="after")
+    def _one_target(self) -> "DecompositionStartIn":
+        if (self.project_id is None) == (self.name is None):
+            raise ValueError("give either project_id or name, not both")
+        return self
+
+
+class DecompositionMessageIn(MessageIn):
+    """A turn, plus new items the user unticked: they're dropped from the draft
+    before the model sees it, so the next turn works on what the user kept."""
+
+    exclude_milestone_refs: list[str] = []
+    exclude_task_refs: list[str] = []
+
+
+class DecompositionConfirmIn(_In):
+    """Refs of new items to leave out — the outline's include checkboxes."""
+
+    exclude_milestone_refs: list[str] = []
+    exclude_task_refs: list[str] = []
+
+
+class ReviewSaveIn(_In):
+    """None saves goal verdicts and notes only; text also stores the narrative."""
+
+    summary: Annotated[str, StringConstraints(max_length=20000)] | None = None
+
+
+class CarryOverIn(_In):
+    new_week_start: date

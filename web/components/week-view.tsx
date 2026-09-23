@@ -1,59 +1,19 @@
 import Link from "next/link";
+import { TaskCheckbox } from "@/components/task-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
 import { Progress } from "@/components/ui/progress";
-import { addDays, formatDate, formatTimestamp } from "@/lib/format";
+import { CarryOver, HabitDays, ReviewPanel } from "@/components/week-controls";
+import { addDays, formatDate } from "@/lib/format";
 import type { GoalProgress, Task, Week } from "@/lib/types";
 
-const DAY_INITIALS = ["M", "T", "W", "T", "F", "S", "S"];
-
-/**
- * Seven boxes for a habit goal. Days after today are dimmed because they
- * haven't happened yet — an unlogged future day is not a missed one (FR-16).
- * Nothing here is interactive yet: ticking is W4.
- */
-function HabitWeek({ weekStart, logged, today }: { weekStart: string; logged: string[]; today: string | null }) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  return (
-    <div className="flex gap-1.5">
-      {days.map((day, i) => {
-        const done = logged.includes(day);
-        const future = today !== null && day > today;
-        return (
-          <span
-            key={day}
-            title={`${formatDate(day)}${done ? " — logged" : ""}`}
-            className={[
-              "flex h-7 w-7 items-center justify-center rounded-md border text-xs font-medium",
-              done
-                ? "border-green-600 bg-green-600 text-white"
-                : "border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-400",
-              future ? "opacity-40" : "",
-            ].join(" ")}
-          >
-            {DAY_INITIALS[i]}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
+/** A task with its tick box: ticking completes it, unticking reopens it (FR-17). */
 function TaskLine({ task }: { task: Task }) {
   const done = task.status === "done";
   return (
-    <li className="flex items-baseline gap-2 text-sm">
-      <span
-        aria-hidden
-        className={
-          done
-            ? "text-green-600 dark:text-green-500"
-            : "text-neutral-300 dark:text-neutral-600"
-        }
-      >
-        {done ? "\u2713" : "\u25cb"}
-      </span>
+    <li className="flex items-center gap-2 text-sm">
+      <TaskCheckbox task={task} />
       <span className={done ? "text-neutral-500 line-through dark:text-neutral-500" : ""}>
         {task.title}
       </span>
@@ -67,7 +27,11 @@ function GoalCard({ progress, weekStart, today }: { progress: GoalProgress; week
     <Card>
       <CardHeader>
         <CardTitle>{goal.description}</CardTitle>
-        {status === null ? (
+        {goal.status === "carried_over" ? (
+          <Badge tone="blue" title="Copied into a later week with its unfinished tasks">
+            Carried over
+          </Badge>
+        ) : status === null ? (
           <Badge tone="neutral" title="No target and no tasks attached, so there is nothing to measure">
             Not measurable
           </Badge>
@@ -79,8 +43,8 @@ function GoalCard({ progress, weekStart, today }: { progress: GoalProgress; week
         <p className="text-sm text-neutral-600 dark:text-neutral-400">{progress.headline}</p>
         <Progress value={progress.completed} max={progress.target} />
 
-        {kind === "habit" ? (
-          <HabitWeek weekStart={weekStart} logged={progress.done} today={today} />
+        {kind === "habit" && goal.habit_id !== null ? (
+          <HabitDays habitId={goal.habit_id} weekStart={weekStart} logged={progress.done} today={today} />
         ) : null}
 
         {progress.tasks.length > 0 ? (
@@ -95,7 +59,15 @@ function GoalCard({ progress, weekStart, today }: { progress: GoalProgress; week
   );
 }
 
-export function WeekView({ week, today }: { week: Week; today: string | null }) {
+export function WeekView({
+  week,
+  today,
+  modelReady,
+}: {
+  week: Week;
+  today: string | null;
+  modelReady: boolean;
+}) {
   const previous = addDays(week.week_start, -7);
   const next = addDays(week.week_start, 7);
 
@@ -126,28 +98,10 @@ export function WeekView({ week, today }: { week: Week; today: string | null }) 
         </div>
       </div>
 
-      {week.review ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Review</CardTitle>
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">
-              Written {formatTimestamp(week.review.generated_at)} · against{" "}
-              {week.review.achieved_count}/{week.review.measurable_count} goals and{" "}
-              {week.review.unplanned_count} unplanned
-            </span>
-          </CardHeader>
-          <CardBody>
-            {/* The stored counts above are the ones the prose was written
-                against, not today's — see requirements §6.7 SCH-2. */}
-            <div className="space-y-3 text-sm whitespace-pre-wrap">{week.review.summary}</div>
-          </CardBody>
-        </Card>
-      ) : null}
-
       {week.goals.length === 0 ? (
         <Empty
           title="No goals set for this week"
-          hint="Weekly planning turns your backlog into goals — that conversation arrives in W3."
+          hint="Weekly planning turns your backlog into goals — open Planning to start."
         />
       ) : (
         <div className="space-y-4">
@@ -161,6 +115,8 @@ export function WeekView({ week, today }: { week: Week; today: string | null }) 
           ))}
         </div>
       )}
+
+      <CarryOver week={week} today={today} />
 
       <Card>
         <CardHeader>
@@ -183,6 +139,8 @@ export function WeekView({ week, today }: { week: Week; today: string | null }) 
           )}
         </CardBody>
       </Card>
+
+      <ReviewPanel week={week} modelReady={modelReady} />
     </div>
   );
 }

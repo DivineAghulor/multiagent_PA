@@ -107,6 +107,32 @@ def propose_weekly_plan(history: list[tuple[str, str]], ctx: PlanningContext) ->
     return model.invoke([("system", system), *history])
 
 
+@dataclass
+class PlanningTurn:
+    proposal: WeeklyPlanProposal  # sanitised: every ID in it is real
+    warnings: list[str]  # what sanitising had to fix, for the user to see
+    history: list[tuple[str, str]]  # the input history plus this turn's two messages
+
+
+def run_planning_turn(
+    history: list[tuple[str, str]], ctx: PlanningContext, message: str
+) -> PlanningTurn:
+    """One full planning exchange: the user's message in, a sanitised whole-plan
+    proposal out. `history` is not modified, so a failed call leaves the
+    caller's conversation exactly as it was.
+
+    The assistant's turn in the returned history is the described plan rather
+    than only the reply, so on the next turn the model sees the plan it
+    proposed, with IDs, and can revise it instead of starting over."""
+    turn_history = [*history, ("user", message)]
+    proposal, warnings = sanitize_proposal(propose_weekly_plan(turn_history, ctx), ctx)
+    return PlanningTurn(
+        proposal=proposal,
+        warnings=warnings,
+        history=[*turn_history, ("assistant", describe_proposal(proposal, ctx))],
+    )
+
+
 def sanitize_proposal(
     proposal: WeeklyPlanProposal, ctx: PlanningContext
 ) -> tuple[WeeklyPlanProposal, list[str]]:

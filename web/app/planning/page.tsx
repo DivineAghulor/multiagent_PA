@@ -1,19 +1,46 @@
+import Link from "next/link";
 import { ApiErrorPanel } from "@/components/api-error";
+import { DraftLost } from "@/components/draft-lost";
+import { PlanningChat, StartPlanning } from "@/components/planning-chat";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
-import { api } from "@/lib/api";
-import { formatDate, ratingLabel } from "@/lib/format";
+import { ApiError, api } from "@/lib/api";
+import { addDays, formatDate, ratingLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function PlanningPage() {
+export default async function PlanningPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session?: string; week?: string }>;
+}) {
+  const { session: sessionId, week } = await searchParams;
+
+  if (sessionId) {
+    try {
+      const [session, health] = await Promise.all([api.planningSession(sessionId), api.health()]);
+      return <PlanningChat initial={session} modelReady={health.provider_key_configured} />;
+    } catch (error) {
+      if (error instanceof ApiError && error.type === "session_expired") {
+        return <DraftLost what="planning conversation" restartHref="/planning" />;
+      }
+      return <ApiErrorPanel error={error} />;
+    }
+  }
+
   let context;
+  let defaultContext;
+  let health;
   try {
-    context = await api.planningContext();
+    // The default week is the one the server would plan now (FR-6); the
+    // preview can be switched to the following week before starting.
+    [defaultContext, health] = await Promise.all([api.planningContext(), api.health()]);
+    context = week ? await api.planningContext({ week_start: week }) : defaultContext;
   } catch (error) {
     return <ApiErrorPanel error={error} />;
   }
+  const weeks = [defaultContext.week_start, addDays(defaultContext.week_start, 7)];
 
   return (
     <div className="space-y-6">
@@ -22,9 +49,29 @@ export default async function PlanningPage() {
           Planning week of {formatDate(context.week_start)}
         </h1>
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          Everything the planning model would be shown. Reading it costs nothing — the
-          conversation that turns it into goals arrives in W3.
+          Everything the planning model will be shown. Reading it costs nothing; the
+          conversation that turns it into goals starts when you do.
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1">
+          {weeks.map((w) => (
+            <Link
+              key={w}
+              href={w === defaultContext.week_start ? "/planning" : `/planning?week=${w}`}
+              aria-current={w === context.week_start ? "true" : undefined}
+              className={
+                w === context.week_start
+                  ? "rounded-md bg-neutral-200 px-2.5 py-1 text-sm font-medium dark:bg-neutral-800"
+                  : "rounded-md px-2.5 py-1 text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              }
+            >
+              {formatDate(w)}
+            </Link>
+          ))}
+        </div>
+        <StartPlanning weekStart={context.week_start} modelReady={health.provider_key_configured} />
       </div>
 
       {context.existing_goals.length > 0 ? (

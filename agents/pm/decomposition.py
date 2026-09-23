@@ -7,8 +7,10 @@ from __future__ import annotations
 import copy
 import functools
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Literal
 
 from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool, StructuredTool
@@ -372,6 +374,19 @@ def system_prompt(draft: DecompositionDraft, today: date) -> str:
 
 
 @dataclass
+class TurnProgress:
+    """One step of a running turn, for a live progress display (NFR-2).
+
+    `phase` is "step" just before each model call and "tool" just after each
+    tool call; `step` and `tool_calls` are the running totals so far."""
+
+    phase: Literal["step", "tool"]
+    step: int
+    tool_calls: int
+    tool: str | None = None
+
+
+@dataclass
 class TurnResult:
     history: list[BaseMessage]  # conversation without the system message, incl. tool traffic
     reply: str
@@ -381,17 +396,28 @@ class TurnResult:
 
 
 def run_decomposition_turn(
-    history: list[BaseMessage], draft: DecompositionDraft, today: date, max_steps: int = MAX_STEPS
+    history: list[BaseMessage],
+    draft: DecompositionDraft,
+    today: date,
+    max_steps: int = MAX_STEPS,
+    on_progress: Callable[[TurnProgress], None] | None = None,
 ) -> TurnResult:
     """Run the tool-calling loop until the model replies without tool calls or hits
-    the step cap. `history` must end with the user's new message; `draft` is edited in place."""
+    the step cap. `history` must end with the user's new message; `draft` is edited in place.
+
+    `on_progress`, if given, is called before every model call and after every
+    tool call. Anything it raises propagates out of the loop, which is how a
+    caller stops a turn early (e.g. the user cancelled): the draft keeps the
+    edits made so far, so a caller that may stop mid-turn should pass a copy."""
     tools = make_draft_tools(draft, today)
     by_name = {t.name: t for t in tools}
     model = get_default_chat_model().bind_tools(tools)
     # System message is rebuilt each turn so it reflects edits made outside the loop.
     messages: list[BaseMessage] = [SystemMessage(system_prompt(draft, today)), *history]
     calls = 0
+    report = on_progress or (lambda _: None)
     for step in range(1, max_steps + 1):
+        report(TurnProgress("step", step, calls))
         ai = model.invoke(messages)
         messages.append(ai)
         if not ai.tool_calls:
@@ -401,6 +427,7 @@ def run_decomposition_turn(
             tool = by_name.get(call["name"])
             result = tool.invoke(call["args"]) if tool else f"Error: unknown tool {call['name']!r}"
             messages.append(ToolMessage(result, tool_call_id=call["id"]))
+            report(TurnProgress("tool", step, calls, call["name"]))
     return TurnResult(messages[1:], STEP_LIMIT_REPLY, max_steps, calls, True)
 
 

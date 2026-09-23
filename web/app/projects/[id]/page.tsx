@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { ApiErrorPanel } from "@/components/api-error";
+import { MilestoneStatusSelect, ProjectControls } from "@/components/project-forms";
+import { TaskCheckbox } from "@/components/task-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty } from "@/components/ui/empty";
@@ -12,9 +14,12 @@ export const dynamic = "force-dynamic";
 
 function TaskRow({ task }: { task: Task }) {
   return (
-    <li className="flex items-baseline justify-between gap-3 text-sm">
-      <span className={task.status === "done" ? "line-through opacity-60" : ""}>
-        {task.title}
+    <li className="flex items-center justify-between gap-3 text-sm">
+      <span className="flex items-center gap-2">
+        <TaskCheckbox task={task} />
+        <span className={task.status === "done" ? "line-through opacity-60" : ""}>
+          {task.title}
+        </span>
       </span>
       <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
         {STATUS_LABELS[task.status]} · {ratingLabel(task)}
@@ -59,9 +64,9 @@ export default async function ProjectDetailPage({
             {milestone.position !== null ? `${milestone.position}. ` : ""}
             {milestone.name}
           </CardTitle>
-          <span className="text-xs text-neutral-500 dark:text-neutral-400">
-            {milestone.status.replace("_", " ")} · {done}/{tasks.length} done · due{" "}
-            {formatDate(milestone.due_date)}
+          <span className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+            {done}/{tasks.length} done · due {formatDate(milestone.due_date)}
+            <MilestoneStatusSelect milestone={milestone} />
           </span>
         </CardHeader>
         <CardBody>
@@ -100,12 +105,15 @@ export default async function ProjectDetailPage({
         <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
           Target: {formatDate(project.target_date)}
         </p>
+        <div className="mt-3">
+          <ProjectControls project={project} />
+        </div>
       </div>
 
       {project.milestones.length === 0 ? (
         <Empty
           title="Not broken down yet"
-          hint="The decomposition conversation that produces milestones arrives in W4."
+          hint="Break it down with the assistant to get milestones and tasks."
         />
       ) : (
         <div className="space-y-4">{project.milestones.map(milestoneCard)}</div>

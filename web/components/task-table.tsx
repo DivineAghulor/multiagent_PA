@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { TaskCheckbox, TaskRowMenu, TaskStatusSelect } from "@/components/task-actions";
 import { Badge } from "@/components/ui/badge";
 import { Empty } from "@/components/ui/empty";
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
+  STATUS_ORDER,
   byCreatedDesc,
   byRatingDesc,
   formatDate,
@@ -13,15 +15,6 @@ import {
 } from "@/lib/format";
 import { PRIORITY_TONES } from "@/lib/tones";
 import type { Project, Task, TaskStatus } from "@/lib/types";
-
-const STATUS_ORDER: TaskStatus[] = [
-  "backlog",
-  "todo",
-  "in_progress",
-  "blocked",
-  "done",
-  "cancelled",
-];
 
 type Sort = "rating" | "created";
 
@@ -31,10 +24,8 @@ const SELECT_CLASS =
 /**
  * Filtering and sorting happen here rather than server-side: this is one
  * person's task list, it arrives whole, and re-sorting it in the browser keeps
- * ordering logic out of the API (see api/routers/tasks.py).
- *
- * Read-only for W1 — completing, editing and deleting arrive in W2 with the
- * tools/tasks.py stubs they need.
+ * ordering logic out of the API (see api/routers/tasks.py). Each row carries
+ * its own actions (FR-4); a write refreshes the server-rendered list.
  */
 export function TaskTable({ tasks, projects }: { tasks: Task[]; projects: Project[] }) {
   const [status, setStatus] = useState<TaskStatus | "all">("all");
@@ -108,15 +99,18 @@ export function TaskTable({ tasks, projects }: { tasks: Task[]; projects: Projec
           title={tasks.length === 0 ? "No tasks yet" : "No tasks match these filters"}
           hint={
             tasks.length === 0
-              ? "Capturing tasks from freeform text arrives in W2."
+              ? "Capture some above — freeform text is split into tasks for you."
               : undefined
           }
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
-          <table className="w-full min-w-[40rem] text-sm">
+          <table className="w-full min-w-[52rem] text-sm">
             <thead className="bg-neutral-100 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
               <tr>
+                <th className="w-8 px-3 py-2">
+                  <span className="sr-only">Done</span>
+                </th>
                 <th className="px-3 py-2 font-medium">Task</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium" title="Importance and urgency, 1-4 each">
@@ -125,18 +119,29 @@ export function TaskTable({ tasks, projects }: { tasks: Task[]; projects: Projec
                 <th className="px-3 py-2 font-medium">Priority</th>
                 <th className="px-3 py-2 font-medium">Project</th>
                 <th className="px-3 py-2 font-medium">Due</th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
               {visible.map((task) => (
                 <tr key={task.id}>
                   <td className="px-3 py-2">
+                    <TaskCheckbox task={task} />
+                  </td>
+                  <td className="px-3 py-2">
                     <span className={task.status === "done" ? "line-through opacity-60" : ""}>
                       {task.title}
                     </span>
+                    {task.description ? (
+                      <p className="mt-0.5 line-clamp-1 text-xs text-neutral-500 dark:text-neutral-400">
+                        {task.description}
+                      </p>
+                    ) : null}
                   </td>
-                  <td className="px-3 py-2 text-neutral-600 dark:text-neutral-400">
-                    {STATUS_LABELS[task.status]}
+                  <td className="px-3 py-2">
+                    <TaskStatusSelect task={task} />
                   </td>
                   <td className="px-3 py-2 text-neutral-600 tabular-nums dark:text-neutral-400">
                     {ratingLabel(task)}
@@ -152,6 +157,9 @@ export function TaskTable({ tasks, projects }: { tasks: Task[]; projects: Projec
                   </td>
                   <td className="px-3 py-2 text-neutral-600 dark:text-neutral-400">
                     {formatDate(task.due_date)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <TaskRowMenu task={task} projects={projects} />
                   </td>
                 </tr>
               ))}

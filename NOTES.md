@@ -14,38 +14,53 @@ resolved — this file should stay short.
 ### The web API has no authentication at all
 
 - **What:** Every endpoint under `api/` is unauthenticated and unscoped. Any
-  request that reaches the process can read the whole database, and once W2
-  lands, write to it and spend the provider key. This is a deliberate v1
-  decision (single user, no `User` table — `docs/webapp-requirements.md` §2),
-  not an oversight, but it means the only thing protecting the data is where
-  the process is listening.
+  request that reaches the process can read and write the whole database,
+  delete tasks, and spend the provider key (capture, planning, decomposition
+  and review all make model calls — a decomposition turn is many). This is a
+  deliberate v1 decision (single user, no `User` table —
+  `docs/webapp-requirements.md` §2), not an oversight, but it means the only
+  thing protecting the data is where the process is listening.
 - **Why it's here:** The mitigation is configuration, so it can be undone
   silently. `API_HOST` defaults to `127.0.0.1` and CORS admits only
   `WEB_ORIGIN`; changing either in a `.env`, or putting a tunnel or reverse
   proxy in front of it, exposes everything with no code change and no warning.
   Anyone deploying this anywhere but their own machine must read SEC-1 first.
+  **This becomes live with the planned Railway deployment** (decided
+  2026-09-22): a Railway service gets a public URL by default, so auth, or at
+  minimum a private network / access gate in front of the API, has to land
+  before or with that deploy.
 - **Resolve when:** Authentication exists, or the app is retired. Note that
   adding it is a schema change (a `User` table plus a `user_id` FK on every
   model and scoping in every `tools/*` query), not a middleware drop-in.
 
-### All `tools/*.py` CRUD functions are unimplemented stubs
+### `tools/calendar.py` is still all stubs
 
-- **What:** Functions in `tools/tasks.py`, `tools/projects.py`,
-  `tools/milestones.py`, `tools/weekly_goals.py`, `tools/habits.py`, and
-  `tools/calendar.py` that no phase has needed yet still `raise
-  NotImplementedError` (PM Phases 1-2 implemented the ones they use; see
-  `progress.md`). No implemented code path calls a remaining stub, so this is
-  not masking a bug today, but any new work that imports one without
-  implementing it will fail loudly (by design) rather than silently.
-- **Why it's here:** Per-phase implementation is expected to fill these in
-  incrementally (PM track and Calendar track own different files). Anyone
-  implementing agent/tool-calling logic against these should confirm the
-  specific functions they depend on are implemented, not assume the whole
-  module is done because one function in it is.
-- **Resolve when:** Close this entry once every function across all six
-  files has a real implementation (tracked naturally via the Phase 1-4
-  entries in `progress.md` for both tracks) — no need to track file-by-file
-  here, `progress.md` already does that.
+- **What:** Every function in `tools/calendar.py` raises
+  `NotImplementedError` (Calendar track, Person B). The PM-side modules
+  (`tasks`, `projects`, `milestones`, `weekly_goals`, `habits`) are now fully
+  implemented — web track W2 filled in the last of them. No implemented code
+  path calls a calendar stub, so this isn't masking a bug today; anything that
+  imports one early fails loudly by design.
+- **Why it's here:** The web app and any orchestrator work must not assume
+  calendar functions exist because every other `tools/` module is complete.
+- **Resolve when:** The Calendar track implements them (see its entries in
+  `progress.md`).
+
+### Unconfirmed drafts live only in the API process's memory
+
+- **What:** Planning conversations and decomposition drafts are held in
+  `api/sessions.py`'s `InMemoryDraftStore`, a dict inside the FastAPI process.
+  The planning and decomposition endpoints depend on it. A restart or
+  redeploy, running more than one worker/replica, 12 hours idle, or the
+  20-session cap each lose drafts; the client then gets `session_expired` and
+  the UI says "this draft was lost, start again" (requirements §5 S-3).
+- **Why it's here:** Accepted for all of v1 (S-4), but it is in-memory state
+  other code depends on, and it constrains deployment: on Railway the API must
+  run as a **single process with one replica**, or drafts will randomly 404
+  depending on which instance a request lands on. Every redeploy drops every
+  open draft.
+- **Resolve when:** A persistent `DraftStore` (a `drafts` table or a LangGraph
+  checkpointer) replaces it — a v2 decision, not to be taken on quietly.
 
 ---
 
@@ -73,6 +88,9 @@ Noted here as a reminder: don't trust a truncated file listing over `git
 ls-files`/`git log` when judging whether something exists in the repo.
 
 ### `app_test.py`'s widget flow was unverified
+
+(The harness itself was retired in web track W4, once the web app reached
+parity.)
 
 Resolved: driven end-to-end through Streamlit's `AppTest` harness against the
 real model + real local Postgres (chat submit -> 2 tasks captured -> rating

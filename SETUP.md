@@ -63,11 +63,17 @@ npm run dev
 ```
 
 The frontend is a separate npm project and is deliberately not managed by `uv`.
-`npm run build` type-checks it; `uv run pytest` covers the API.
+`uv run pytest` covers the API and agents; in `web/`, `npm test` runs the
+component tests and `npm run build` type-checks.
 
-`app_test.py` (the Streamlit harness) still works and still has the flows the
-web app hasn't reached yet. Both are kept until the web app reaches parity, per
-`docs/webapp-requirements.md` T-6.
+The model-backed actions (capture, planning, breaking a project down, drafting
+a week review) need the provider key in `.env`; without it the header shows
+"Degraded" and everything else keeps working. Unconfirmed planning and
+breakdown drafts are held in the API process's memory, so restarting
+`uvicorn --reload` (including on a code change) discards them.
+
+The old Streamlit harness (`app_test.py`) was retired once the web app reached
+parity.
 
 ## Notes
 

@@ -10,7 +10,7 @@
 | LLM provider | Abstracted via LangChain's `BaseChatModel` — Anthropic, Gemini, OpenAI, Grok (`langchain-xai`) selectable by config, never hardcoded in agent code |
 | API keys | Shared, distributed via a password manager, never committed |
 | Email | Gmail + app password |
-| Deployment | Not immediate, but planned — revisit the deployment mechanism (containerized or not) once closer; not a local dev concern for now |
+| Deployment | **Railway**, for cloud testing once the web app is done (decided 2026-09-22). Before exposing the API: resolve SEC-1 / no auth (`docs/webapp-requirements.md` §9, `NOTES.md`), and run the API as a single replica while drafts are in memory. The scheduler mechanism for the email jobs is still a separate, open decision |
 | Package manager | `uv` |
 | Observability | Shared LangSmith project from day one |
 | Testing | pytest + mocks locally; shared eval set (fixed prompts + expected outputs) run by both; live pairing sessions for integration |

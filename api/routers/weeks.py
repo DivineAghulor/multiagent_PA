@@ -1,7 +1,8 @@
-"""The week screen and stored review history — all deterministic, no model call.
+"""The week screen, its review, carry-over, and stored review history.
 
-Generating review prose is a model call and lands in W4; what is here is the
-facts (`build_week_review`) plus whatever narrative was already saved.
+Everything here is deterministic except drafting the review's prose, which is
+one model call and writes nothing. Saving is a separate request that sends
+the prose back, so what gets stored is exactly what the user read (FR-19/20).
 """
 from __future__ import annotations
 
@@ -9,17 +10,29 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
 
-from agents.pm.review import GoalReview, WeekReview, build_week_review, render_review_facts
+from agents.pm.review import (
+    GoalReview,
+    WeekReview,
+    build_week_review,
+    render_review_facts,
+    save_review,
+    summarize_week,
+)
 from api.deps import this_week_start, week_start_param
+from api.errors import NotFoundError, model_call
 from api.schemas import (
+    CarryOverIn,
     GoalProgressOut,
     HabitOut,
+    ReviewDraftOut,
+    ReviewSaveIn,
     TaskOut,
     WeeklyGoalOut,
     WeeklyReviewOut,
     WeekOut,
 )
 from tools.reviews import get_week_summary, list_week_summaries
+from tools.weekly_goals import carry_over_weekly_goal, get_weekly_goal
 
 router = APIRouter(prefix="/api", tags=["weeks"])
 
@@ -65,6 +78,33 @@ def current_week_endpoint() -> WeekOut:
 @router.get("/weeks/{week_start}", response_model=WeekOut)
 def week_endpoint(week_start: date = Depends(week_start_param)) -> WeekOut:
     return _week_out(build_week_review(week_start))
+
+
+@router.post("/weeks/{week_start}/review/draft", response_model=ReviewDraftOut)
+def draft_review_endpoint(week_start: date = Depends(week_start_param)) -> ReviewDraftOut:
+    """**Model call (one).** Prose over the week's computed facts, for the user
+    to read before saving. Writes nothing, so a failure loses nothing (FR-19)."""
+    with model_call():
+        summary = summarize_week(build_week_review(week_start))
+    return ReviewDraftOut(summary=summary)
+
+
+@router.post("/weeks/{week_start}/review", response_model=WeekOut)
+def save_review_endpoint(body: ReviewSaveIn, week_start: date = Depends(week_start_param)) -> WeekOut:
+    """Record the review: per-goal notes and ACHIEVED/MISSED, and — when
+    `summary` is given — the narrative with the counts it was written against
+    (FR-20, FR-22). No model call. Re-saving a week overwrites its own review."""
+    save_review(build_week_review(week_start), body.summary)
+    return _week_out(build_week_review(week_start))
+
+
+@router.post("/weekly-goals/{goal_id}/carry-over", response_model=WeeklyGoalOut)
+def carry_over_endpoint(goal_id: int, body: CarryOverIn) -> WeeklyGoalOut:
+    """Copy a goal into a later week with its unfinished tasks; the original
+    becomes carried_over (FR-21). Only ever on an explicit user action."""
+    if get_weekly_goal(goal_id) is None:
+        raise NotFoundError("Weekly goal", goal_id)
+    return WeeklyGoalOut.model_validate(carry_over_weekly_goal(goal_id, body.new_week_start))
 
 
 @router.get("/reviews", response_model=list[WeeklyReviewOut])

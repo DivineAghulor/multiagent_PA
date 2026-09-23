@@ -8,6 +8,8 @@ from sqlalchemy import select
 from db.models import Habit, HabitFrequency, HabitLog
 from db.session import get_session
 
+from .common import UNSET, Unset
+
 
 def create_habit(
     name: str,
@@ -43,8 +45,42 @@ def list_habits(active_only: bool = True) -> list[Habit]:
         return list(session.scalars(stmt).all())
 
 
+def update_habit(
+    habit_id: int,
+    name: str | Unset = UNSET,
+    description: str | None | Unset = UNSET,
+    frequency: HabitFrequency | Unset = UNSET,
+    target_per_period: int | Unset = UNSET,
+    active: bool | Unset = UNSET,
+) -> Habit:
+    """Edit a habit. Omitted arguments are left alone; None clears the description.
+    Existing logs are kept whatever changes — they record what happened."""
+    if target_per_period is not UNSET and target_per_period < 1:
+        raise ValueError("target_per_period must be at least 1")
+    with get_session() as session:
+        habit = session.get(Habit, habit_id)
+        if habit is None:
+            raise ValueError(f"Habit {habit_id} not found")
+        if name is not UNSET:
+            if not name.strip():
+                raise ValueError("name is empty")
+            habit.name = name.strip()
+        if description is not UNSET:
+            habit.description = (description.strip() or None) if description else None
+        if frequency is not UNSET:
+            habit.frequency = frequency
+        if target_per_period is not UNSET:
+            habit.target_per_period = target_per_period
+        if active is not UNSET:
+            habit.active = active
+        session.flush()
+        session.refresh(habit)
+        return habit
+
+
 def deactivate_habit(habit_id: int) -> Habit:
-    raise NotImplementedError
+    """Stop offering a habit to planning; its logs and past goals are kept."""
+    return update_habit(habit_id, active=False)
 
 
 def log_habit_completion(habit_id: int, on_date: date, note: str | None = None) -> HabitLog:

@@ -152,11 +152,102 @@ export interface Health {
   today: string;
 }
 
+// --- Draft sessions (planning, decomposition) ---------------------------
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export interface ProposalGoal {
+  description: string;
+  project_id: number | null;
+  project_name: string | null;
+  habit_id: number | null;
+  habit_name: string | null;
+  target_count: number | null;
+  tasks: { id: number; title: string }[];
+}
+
+export interface Proposal {
+  reply: string;
+  goals: ProposalGoal[];
+}
+
+/** A planning conversation. Lives only in the backend's memory: a restart
+ * loses it, and every endpoint then answers `session_expired` (S-3). */
+export interface PlanningSession {
+  session_id: string;
+  week_start: string;
+  context: PlanningContext;
+  messages: ChatMessage[];
+  proposal: Proposal | null;
+  warnings: string[];
+}
+
+export interface DraftTask {
+  ref: string;
+  title: string;
+  description: string | null;
+  existing_task_id: number | null;
+}
+
+export interface DraftMilestone {
+  ref: string;
+  name: string;
+  description: string | null;
+  due_date: string | null;
+  existing_id: number | null;
+  existing_task_titles: string[];
+  tasks: DraftTask[];
+}
+
+export interface Draft {
+  project_name: string;
+  project_description: string | null;
+  project_id: number | null;
+  milestones: DraftMilestone[];
+  eligible_tasks: { id: number; title: string }[];
+  new_task_count: number;
+}
+
+export interface TurnStats {
+  steps: number;
+  tool_calls: number;
+  hit_limit: boolean;
+}
+
+export interface DecompositionSession {
+  session_id: string;
+  draft: Draft;
+  messages: ChatMessage[];
+  last_turn: TurnStats | null;
+}
+
+/** One live update from a running decomposition turn (NFR-2). */
+export interface TurnProgress {
+  phase: "step" | "tool";
+  step: number;
+  tool_calls: number;
+  tool: string | null;
+}
+
+export interface DecompositionResult {
+  project: Project;
+  milestones: Milestone[];
+  new_tasks: Task[];
+}
+
+export interface ReviewDraft {
+  summary: string;
+}
+
 /** The API's error envelope (api/errors.py). */
 export type ApiErrorType =
   | "not_found"
   | "invalid_request"
   | "validation"
   | "session_expired"
+  | "conflict"
   | "provider"
   | "internal";

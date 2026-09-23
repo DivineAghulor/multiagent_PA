@@ -12,7 +12,7 @@ export default async function WeekPage({
   const { weekStart } = await params;
   try {
     const [week, health] = await Promise.all([api.week(weekStart), api.health()]);
-    return <WeekView week={week} today={health.today} />;
+    return <WeekView week={week} today={health.today} modelReady={health.provider_key_configured} />;
   } catch (error) {
     return <ApiErrorPanel error={error} />;
   }

@@ -27,7 +27,7 @@ export default async function ReviewsPage() {
       {reviews.length === 0 ? (
         <Empty
           title="No weeks reviewed yet"
-          hint="Reviews are generated from the week screen; that arrives in W4."
+          hint="Generate and save one from the week screen; saved reviews collect here."
         />
       ) : (
         <div className="space-y-4">

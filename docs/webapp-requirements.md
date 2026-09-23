@@ -321,31 +321,40 @@ stay; what changes is that nothing sets them directly.
 JSON over HTTP; SSE for the two conversational endpoints. Dates are ISO
 `YYYY-MM-DD`; timestamps are ISO 8601 with offset.
 
+As built (W1–W4). The OpenAPI document at `/docs` is the exhaustive reference.
+
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/health` | DB reachable, provider/model configured. Reports `bool(key)`, never a key or a slice of one. |
-| GET | `/api/tasks` | filters: `status`, `project_id`, `milestone_id` |
-| POST | `/api/backlog/capture` | `{text}` → created tasks. Model call. |
-| PATCH | `/api/tasks/{id}` | edit fields |
+| GET | `/api/tasks` · `/api/tasks/{id}` | filters: `status`, `project_id`, `milestone_id`, `weekly_goal_id` |
+| POST | `/api/backlog/capture` | `{text}` → created tasks, unrated. **Model call.** |
+| PATCH | `/api/tasks/{id}` | title/description/due date/project/milestone; omitted = unchanged, `null` = clear |
 | PATCH | `/api/tasks/{id}/priority` | `{importance, urgency}`, 1–4 each |
+| PUT | `/api/tasks/{id}/status` | any status; `completed_at` kept consistent |
 | POST | `/api/tasks/{id}/complete` · `/reopen` | |
+| PUT | `/api/tasks/{id}/schedule` | `{scheduled_for}`, `null` unschedules |
 | DELETE | `/api/tasks/{id}` | |
 | GET | `/api/planning/context` | `?week_start=` |
-| POST | `/api/planning/sessions` | → `{session_id, context}` |
-| POST | `/api/planning/sessions/{id}/messages` | SSE; → `{reply, proposal, warnings}` |
-| POST | `/api/planning/sessions/{id}/confirm` | → created goals; ends session |
+| POST | `/api/planning/sessions` | `{week_start?}` → the whole session |
+| GET | `/api/planning/sessions/{id}` | the whole session: context, messages, proposal, warnings |
+| POST | `/api/planning/sessions/{id}/messages` | `{text}` → the whole session. **Model call.** Plain JSON, not SSE: one call, a pending state is enough (NFR-2) |
+| POST | `/api/planning/sessions/{id}/confirm` | `{goals?: [{index, description, target_count}]}` → created goals; ends session |
 | DELETE | `/api/planning/sessions/{id}` | cancel |
 | POST | `/api/decomposition/sessions` | `{project_id}` or `{name, description}` |
-| GET | `/api/decomposition/sessions/{id}` | current draft |
-| POST | `/api/decomposition/sessions/{id}/messages` | SSE; → `{reply, draft, steps, tool_calls, hit_limit}` |
-| POST | `/api/decomposition/sessions/{id}/confirm` | → project, milestones, new tasks |
-| GET | `/api/weeks/{week_start}` | goals + progress facts + stored summary if any, no model call |
-| POST | `/api/weeks/{week_start}/review` | `{save: bool}`; one model call; on save, upserts `weekly_reviews` |
+| GET | `/api/decomposition/sessions/{id}` | draft, messages, `last_turn` |
+| POST | `/api/decomposition/sessions/{id}/messages` | `{text, exclude_*_refs}`; **SSE, many model calls**: `progress` events, then `result` (the whole session) or `error` |
+| POST | `/api/decomposition/sessions/{id}/confirm` | `{exclude_milestone_refs, exclude_task_refs}` → project, milestones, new tasks |
+| DELETE | `/api/decomposition/sessions/{id}` | cancel |
+| GET | `/api/weeks/current` · `/api/weeks/{week_start}` | goals + progress facts + stored summary if any, no model call |
+| POST | `/api/weeks/{week_start}/review/draft` | → `{summary}`. **Model call.** Writes nothing |
+| POST | `/api/weeks/{week_start}/review` | `{summary?}` → the week. Saves verdicts and notes, and the prose when given; no model call. Split from drafting so what's stored is exactly what the user read |
 | GET | `/api/reviews` | stored week summaries, newest first (history view) |
 | POST | `/api/weekly-goals/{id}/carry-over` | `{new_week_start}` |
 | GET/POST | `/api/projects` · `/api/habits` | list, create |
-| PATCH | `/api/projects/{id}` · `/api/habits/{id}` | edit; archive/deactivate |
-| POST/DELETE | `/api/habits/{id}/logs` | `{date}` |
+| PATCH | `/api/projects/{id}` · `/api/habits/{id}` | edit (incl. restoring status / `active`) |
+| POST | `/api/projects/{id}/archive` · `/api/habits/{id}/deactivate` | |
+| PATCH | `/api/milestones/{id}` | status (FR-25), name, description, due date |
+| POST · DELETE | `/api/habits/{id}/logs` · `/api/habits/{id}/logs/{date}` | tick `{date}` (future days rejected) · untick |
 
 **API-1.** Every endpoint that triggers a model call is documented as such and
 returns a typed error (provider unreachable, quota, malformed output) the
@@ -415,10 +424,11 @@ not code:
   The web app adds no eval fixtures — it changes no prompts.
 - **T-5.** Frontend: component tests for the rating flow, the proposal
   renderer, the draft outline and the week grid; one end-to-end smoke test
-  against a seeded DB with the model mocked at the API layer.
+  against a seeded DB with the model mocked at the API layer. *The component
+  tests exist (`npm test`); the browser end-to-end test does not yet.*
 - **T-6.** `app_test.py` and `tests/test_app_ui.py` stay until the web app
   reaches parity on all four screens, then both are deleted in one commit.
-  Streamlit leaves `pyproject.toml` at that point.
+  Streamlit leaves `pyproject.toml` at that point. *Done in W4.*
 
 ## 11. Suggested phasing
 
@@ -442,29 +452,31 @@ Each phase ends in a working, tested state and gets a `progress.md` entry.
 
 ## 12. Open questions
 
-1. **Ownership.** The web app is not in either person's track. Does it belong
-   to Person A (who owns every screen it fronts), or is it joint work? W0 and
-   W1 were built on the `project-management-subagent` branch in the meantime;
-   nothing in them assumes an answer.
+None open. Closed:
 
-Four earlier questions are closed and recorded in §2: draft loss on restart is
-acceptable for v1 (§5), `weekly_reviews` is added now (§6.7),
-importance/urgency is the rating system with `priority` derived from it (§6.7),
-and the frontend is Next.js app router plus Tailwind in this repo.
+- **Ownership** (2026-09-22): the web app is Person A's, for demo purposes, as
+  its own track on branch `pa-web-app`. Person B doesn't review it for now.
+- **Provider budget** (2026-09-22): the web app uses whatever
+  `LLM_PROVIDER`/`LLM_MODEL` is configured, with no per-turn call cap (a cap
+  would cost quality); spend is capped on the provider's dashboard.
+- Earlier, recorded in §2: draft loss on restart is acceptable for v1 (§5),
+  `weekly_reviews` is added now (§6.7), importance/urgency is the rating
+  system with `priority` derived from it (§6.7), and the frontend is Next.js
+  app router plus Tailwind in this repo.
 
 ## 13. Human input required
 
-- **Deployment decision** if the app is to run anywhere but localhost — gated
-  by SEC-1 and explicitly deferred in `implementation-plan.md`.
-- **Node/npm toolchain** installed on both machines, with a version agreement,
-  the same way the Postgres major version was agreed.
-- **Provider budget.** A per-token provider plus a 14–22-call decomposition
-  turn is a spending decision, not a technical one.
-- **Declaring the PM track stable** before any orchestrator or calendar work is
-  layered onto this app.
-- **Telling Person B about SCH-5/SCH-9** before the Calendar track's priority
-  engine is built against the old assumption.
-- **Running W0's migration against the shared Neon/Supabase DB**, whenever that
-  instance comes into use — local is routine, shared is not.
-- Answering §12's remaining ownership question before the web track grows
-  past W1.
+Settled 2026-09-22: Node 22 is the agreed toolchain; the PM track is declared
+stable; Person B has been told about SCH-5/SCH-9; ownership and budget (§12).
+
+Still open:
+
+- **Railway deployment** is the chosen target after the web app. Before the
+  API gets a public URL, SEC-1 needs an answer — auth, or a private network or
+  access gate in front of it (NOTES.md). The API must also run as one process
+  and one replica while drafts are in memory (§5, NOTES.md).
+- **The scheduler mechanism** for the email jobs is still deferred in
+  `implementation-plan.md`; Railway may answer it, but it's a separate call.
+- **Running the migrations against the shared Neon/Supabase DB** (or a Railway
+  Postgres) when that instance comes into use — local is routine, shared is
+  not, and each run needs its own confirmation.

@@ -160,3 +160,45 @@ def test_confirm_rejects_a_stale_plan_without_writing(seeded) -> None:
     with pytest.raises(ValueError, match="out of date"):
         confirm_weekly_plan(MONDAY, goals)
     assert [g.description for g in list_weekly_goals()] == ["Someone else"]
+
+
+# --- run_planning_turn (added for the web app's planning sessions) ---------
+
+def test_run_planning_turn_sanitises_and_extends_history_without_mutating_it(seeded) -> None:
+    from agents.pm.planning import run_planning_turn
+
+    ctx = load_planning_context(MONDAY)
+    raw = WeeklyPlanProposal(
+        reply="Pricing page this week.",
+        goals=[
+            ProposedGoal(
+                description="Ship pricing",
+                project_id=seeded["website"].id,
+                task_ids=[seeded["pricing"].id, 999],
+            )
+        ],
+    )
+    history = [("user", "focus on the website"), ("assistant", "ok")]
+
+    with patch("agents.pm.planning.propose_weekly_plan", return_value=raw) as propose:
+        turn = run_planning_turn(history, ctx, "just the pricing page")
+
+    sent_history = propose.call_args.args[0]
+    assert sent_history[-1] == ("user", "just the pricing page")
+    assert turn.proposal.goals[0].task_ids == [seeded["pricing"].id]  # 999 dropped
+    assert any("999" in w for w in turn.warnings)
+    assert turn.history[:3] == [*history, ("user", "just the pricing page")]
+    role, text = turn.history[3]
+    assert role == "assistant" and f"[task {seeded['pricing'].id}]" in text
+    assert history == [("user", "focus on the website"), ("assistant", "ok")]
+
+
+def test_run_planning_turn_failure_leaves_history_untouched(seeded) -> None:
+    from agents.pm.planning import run_planning_turn
+
+    history = [("user", "hi"), ("assistant", "hello")]
+    with patch("agents.pm.planning.propose_weekly_plan", side_effect=RuntimeError("provider down")):
+        with pytest.raises(RuntimeError):
+            run_planning_turn(history, load_planning_context(MONDAY), "plan it")
+    assert history == [("user", "hi"), ("assistant", "hello")]
+

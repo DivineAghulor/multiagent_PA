@@ -526,3 +526,123 @@ than a stack trace. `npm run build` passes (9 routes).
 - W2 writes need the `tools/*.py` stubs in §6.6 — `update_task`, `delete_task`,
   `update_project`, `archive_project`, `deactivate_habit`, and a new
   `update_habit`. None of them is called by W1.
+
+## Web track W2 — Backlog capture and CRUD (2026-09-22)
+
+**Scope:** W2 of `docs/webapp-requirements.md` §11 — capture, rating, task
+edit/delete, project/habit/milestone management; the first model call on the
+web path. The web track is Person A's own track (branch `pa-web-app`).
+
+**Changed:**
+- `tools/` — implemented the §6.6 stubs: `update_task`, `delete_task`,
+  `update_project`, `archive_project`, `deactivate_habit`, plus new
+  `update_habit` and `set_task_status` (keeps `completed_at` consistent with the
+  status). Update tools take a `tools/common.py` `UNSET` default, so "leave
+  alone" and "clear to null" are different calls. `update_task` checks a task's
+  milestone belongs to its resulting project
+- `api/errors.py` — `provider` (502, or 503 when no key is configured),
+  `conflict` and `session_expired` error types; `model_call()` wraps the one
+  agent call in a handler; provider error text is redacted for anything
+  key-shaped before it reaches a response (some providers echo masked key
+  slices); a catch-all handler keeps the envelope on unexpected 500s
+- `api/routers/backlog.py` (new, `POST /api/backlog/capture`),
+  `tasks.py` (PATCH, priority, status, complete/reopen, schedule, DELETE),
+  `projects.py` (create, PATCH, archive, milestone PATCH), `habits.py`
+  (create, PATCH, deactivate, day log/unlog; future days rejected)
+- `api/schemas.py` — request bodies; partial updates use `exclude_unset`, and
+  required fields reject an explicit null
+- `web/` — `lib/api.ts` gains `actions` (browser-side writes, each followed by
+  `router.refresh()`); `lib/use-action.ts` (pending/error/abort state);
+  primitives `button`, `field`, `dialog` (native `<dialog>`); capture box with
+  the FR-2 rating queue (also "rate N unrated"); task rows get tick, status,
+  edit (incl. scheduled date), rate and confirm-to-delete; project create/edit/
+  archive/restore, milestone status, habit create/edit/deactivate/reactivate
+- `web/package.json` — `next` 15.5.4 -> 15.5.25 (critical advisory fixed in
+  the same minor); `npm audit fix` for `sharp`
+
+**Tests:** `tests/test_crud_tools.py` (18) and `tests/test_api_writes.py` (37),
+capture mocked at the router. Redaction, missing-key 503 and malformed
+structured output (-> `provider`, not 400/500) are covered.
+
+**Follow-ups:**
+- Capture writes tasks one by one after the model call, so a model failure
+  writes nothing (FR-5) but a DB failure mid-batch could leave some rows.
+- `npm audit` still reports `postcss` bundled inside Next (build-time only);
+  the fix is a breaking `--force`, not taken.
+
+## Web track W3 — Planning conversation (2026-09-22)
+
+**Scope:** W3 — draft session store, planning session endpoints, confirmation,
+sanitisation warnings in the UI.
+
+**Changed:**
+- `api/sessions.py` (new) — `DraftStore` protocol and `InMemoryDraftStore`:
+  opaque UUIDs, sliding 12h TTL, cap of 20 with LRU eviction of idle sessions,
+  a per-session lock (`exclusive`) so two tabs can't run turns on one draft or
+  confirm mid-turn. A session mid-turn never expires; its TTL restarts when the
+  turn ends. In-memory by decision (S-4) — see NOTES.md
+- `agents/pm/planning.py` — `run_planning_turn()`: user message in, sanitised
+  whole-plan proposal + warnings + extended history out, without mutating the
+  caller's history (so a failed call changes nothing)
+- `api/routers/planning.py` — sessions: create, get, message (reloads the
+  context each turn, so the model never plans from a stale backlog), confirm
+  (optionally with per-goal include/wording/target edits, by index; links come
+  only from the proposal), cancel
+- `web/` — planning screen: week choice, session id in the URL (reload keeps
+  the conversation), chat, editable structured proposal, warnings,
+  confirm -> week screen; `DraftLost` state for `session_expired` (S-3)
+
+**Tests:** `tests/test_draft_store.py` (10, incl. TTL, cap, busy sessions and
+ref stability), `tests/test_api_planning.py` (15), two new
+`run_planning_turn` tests in `tests/test_planning.py`.
+
+**Follow-ups:** none beyond the NOTES.md entry for the in-memory store.
+
+## Web track W4 — Decomposition, week screen and review; parity (2026-09-22)
+
+**Scope:** W4 — progress callback, SSE, draft outline, week ticking, review
+generation, carry-over; parity with the Streamlit harness, which is retired.
+
+**Changed:**
+- `agents/pm/decomposition.py` — `run_decomposition_turn(on_progress=...)`,
+  called before each model call and after each tool call (`TurnProgress`);
+  anything it raises stops the loop, which is how a cancelled turn stops
+  spending
+- `api/routers/decomposition.py` (new) — sessions with an SSE turn endpoint:
+  `progress` events, then `result` or an in-band `error`. Each turn runs on a
+  copy of the draft committed only on success, so a failed, stopped or
+  conflicting turn leaves the draft and its refs untouched. A client
+  disconnect stops the worker at its next step. Turn messages can carry
+  unticked refs, dropped before the model sees the draft (harness parity).
+  Confirm takes exclusions; its guard errors keep the session
+- `api/routers/weeks.py` — `POST /weeks/{w}/review/draft` (one model call,
+  writes nothing), `POST /weeks/{w}/review` (saves verdicts, and the edited
+  prose when given — no model call), `POST /weekly-goals/{id}/carry-over`
+- `web/` — `/decompose` (new or existing project, live progress with tool
+  labels and running call count, last-turn cost, distinct step-limit state,
+  outline with include boxes, post-confirm rating queue); week screen ticking
+  for tasks and habit days, review panel (generate -> edit -> save, regenerate,
+  verdicts-only save), carry-over one or all to a chosen week
+- `web/lib/format.ts` — **bug fix from W1:** `addDays` mixed a local midnight
+  with `toISOString()`, shifting every date a day early east of UTC — the week
+  screen's Previous/Next linked to Sundays (400) and the habit grid was off by
+  one. Now UTC throughout; vitest runs pinned to `Africa/Lagos` so it can't
+  regress unnoticed
+- Retired `app_test.py`, `tests/test_app_ui.py` and `streamlit` (T-6)
+- `web/` tests — vitest + Testing Library: rating queue, proposal renderer and
+  editing, draft outline, habit day grid, SSE parser, date helpers
+
+**Tests:** `pytest` 244/244 (260 before retiring the harness's 16):
+`tests/test_api_decomposition.py` (20), `tests/test_api_review.py` (11), two
+progress-callback tests. `npm test` 26/26, `npm run build` passes (10 routes).
+Live smoke against local Postgres with both servers: every screen renders,
+dead session links show the lost-draft state, CORS admits only `WEB_ORIGIN`,
+one real planning turn and one real decomposition turn (6 progress events
+arriving incrementally, result at 4.7s) — both discarded, nothing written.
+
+**Follow-ups:**
+- T-5's end-to-end browser smoke test (Playwright against a seeded DB) is not
+  written; the component tests plus the live smoke above stand in for it.
+- `next lint` has never been configured in `web/` (it prompts to set up
+  ESLint); `npm run build` is the type gate.
+- Railway deployment is next, and NOTES.md's no-auth entry becomes live then.

@@ -8,6 +8,8 @@ from sqlalchemy import func, select
 from db.models import Project, ProjectStatus
 from db.session import get_session
 
+from .common import UNSET, Unset
+
 
 def find_project_by_name(name: str) -> Project | None:
     """Case-insensitive exact-name lookup, used to resolve an LLM-extracted
@@ -42,16 +44,34 @@ def list_projects(status: ProjectStatus | None = None) -> list[Project]:
 
 def update_project(
     project_id: int,
-    name: str | None = None,
-    description: str | None = None,
-    status: ProjectStatus | None = None,
-    target_date: date | None = None,
+    name: str | Unset = UNSET,
+    description: str | None | Unset = UNSET,
+    status: ProjectStatus | Unset = UNSET,
+    target_date: date | None | Unset = UNSET,
 ) -> Project:
-    raise NotImplementedError
+    """Edit a project. Omitted arguments are left alone; None clears a nullable field."""
+    with get_session() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ValueError(f"Project {project_id} not found")
+        if name is not UNSET:
+            if not name.strip():
+                raise ValueError("name is empty")
+            project.name = name.strip()
+        if description is not UNSET:
+            project.description = (description.strip() or None) if description else None
+        if status is not UNSET:
+            project.status = status
+        if target_date is not UNSET:
+            project.target_date = target_date
+        session.flush()
+        session.refresh(project)
+        return project
 
 
 def archive_project(project_id: int) -> Project:
-    raise NotImplementedError
+    """Hide a project from planning without deleting its history. Reversible via update_project."""
+    return update_project(project_id, status=ProjectStatus.ARCHIVED)
 
 
 def delete_project(project_id: int) -> None:

@@ -5,8 +5,10 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 
-from db.models import Task, TaskPriority, TaskStatus
+from db.models import Milestone, Project, Task, TaskPriority, TaskStatus, WeeklyGoal
 from db.session import get_session
+
+from .common import UNSET, Unset
 
 
 def _validate_priority_pair(importance: int | None, urgency: int | None) -> None:
@@ -104,9 +106,36 @@ def update_task_status(task_id: int, status: TaskStatus) -> Task:
         return task
 
 
-def schedule_task(task_id: int, scheduled_for: date) -> Task:
-    """Assign a task to a date during weekly planning."""
-    raise NotImplementedError
+def set_task_status(task_id: int, status: TaskStatus) -> Task:
+    """Move a task to any status, keeping completed_at consistent with it:
+    DONE stamps it (as complete_task does), anything else clears it."""
+    if status == TaskStatus.DONE:
+        task = get_task(task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        # Re-marking a done task keeps its original completion time.
+        return task if task.status == TaskStatus.DONE else complete_task(task_id)
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        task.status = status
+        task.completed_at = None
+        session.flush()
+        session.refresh(task)
+        return task
+
+
+def schedule_task(task_id: int, scheduled_for: date | None) -> Task:
+    """Assign a task to a date during weekly planning; None unschedules it."""
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        task.scheduled_for = scheduled_for
+        session.flush()
+        session.refresh(task)
+        return task
 
 
 def complete_task(task_id: int, completed_at: datetime | None = None) -> Task:
@@ -139,18 +168,65 @@ def reopen_task(task_id: int, status: TaskStatus = TaskStatus.TODO) -> Task:
 
 def update_task(
     task_id: int,
-    title: str | None = None,
-    description: str | None = None,
-    due_date: date | None = None,
-    project_id: int | None = None,
-    milestone_id: int | None = None,
-    weekly_goal_id: int | None = None,
+    title: str | Unset = UNSET,
+    description: str | None | Unset = UNSET,
+    due_date: date | None | Unset = UNSET,
+    project_id: int | None | Unset = UNSET,
+    milestone_id: int | None | Unset = UNSET,
+    weekly_goal_id: int | None | Unset = UNSET,
 ) -> Task:
-    raise NotImplementedError
+    """Edit a task's fields. Omitted arguments are left alone; None clears a
+    nullable field. The rating has its own tool (update_task_priority).
+
+    A task's milestone must belong to its project, checked against the values
+    the task ends up with — so moving a task to another project means clearing
+    or replacing its milestone in the same call.
+    """
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+
+        if title is not UNSET:
+            if not title.strip():
+                raise ValueError("title is empty")
+            task.title = title.strip()
+        if description is not UNSET:
+            task.description = (description.strip() or None) if description else None
+        if due_date is not UNSET:
+            task.due_date = due_date
+        if project_id is not UNSET:
+            if project_id is not None and session.get(Project, project_id) is None:
+                raise ValueError(f"Project {project_id} not found")
+            task.project_id = project_id
+        if milestone_id is not UNSET:
+            task.milestone_id = milestone_id
+        if weekly_goal_id is not UNSET:
+            if weekly_goal_id is not None and session.get(WeeklyGoal, weekly_goal_id) is None:
+                raise ValueError(f"WeeklyGoal {weekly_goal_id} not found")
+            task.weekly_goal_id = weekly_goal_id
+
+        if task.milestone_id is not None:
+            milestone = session.get(Milestone, task.milestone_id)
+            if milestone is None:
+                raise ValueError(f"Milestone {task.milestone_id} not found")
+            if milestone.project_id != task.project_id:
+                raise ValueError(
+                    f"Milestone {milestone.id} belongs to project {milestone.project_id}, "
+                    f"not {task.project_id if task.project_id is not None else 'no project'}"
+                )
+
+        session.flush()
+        session.refresh(task)
+        return task
 
 
 def delete_task(task_id: int) -> None:
-    raise NotImplementedError
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        session.delete(task)
 
 
 def update_task_priority(task_id: int, importance: int, urgency: int) -> Task:

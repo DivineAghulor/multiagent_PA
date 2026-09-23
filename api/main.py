@@ -18,7 +18,7 @@ from sqlalchemy import text
 
 from api.deps import server_today
 from api.errors import register_error_handlers
-from api.routers import habits, planning, projects, tasks, weeks
+from api.routers import backlog, decomposition, habits, planning, projects, tasks, weeks
 from api.schemas import HealthOut
 from config import settings
 from db.session import get_session
@@ -42,7 +42,7 @@ app.add_middleware(
 
 register_error_handlers(app)
 
-for module in (tasks, projects, habits, weeks, planning):
+for module in (tasks, backlog, projects, habits, weeks, planning, decomposition):
     app.include_router(module.router)
 
 
